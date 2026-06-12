@@ -1,0 +1,280 @@
+require "base64"
+require "fileutils"
+require "shellwords"
+require "open3"
+
+opt_out_usage
+default_platform(:mac)
+
+REPO_ROOT = File.expand_path("..", __dir__)
+PROJECT = File.join(REPO_ROOT, "Wisper.xcodeproj")
+SCHEME = "Wisper"
+APP_NAME = "Wisper"
+INFO_PLIST = File.join(REPO_ROOT, "Info.plist")
+BUILD_DIR = File.join(REPO_ROOT, "build")
+EXPORT_PATH = File.join(BUILD_DIR, "export")
+DMG_DIR = File.join(BUILD_DIR, "dmg")
+
+def env!(name)
+  value = ENV[name]
+  UI.user_error!("Missing required environment variable: #{name}") if value.to_s.empty?
+  value
+end
+
+def write_export_options(path)
+  team_id = env!("APPLE_TEAM_ID")
+
+  File.write(path, <<~PLIST)
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>method</key>
+      <string>developer-id</string>
+      <key>signingStyle</key>
+      <string>automatic</string>
+      <key>teamID</key>
+      <string>#{team_id}</string>
+    </dict>
+    </plist>
+  PLIST
+end
+
+def release_tag(options)
+  tag = options[:tag].to_s
+  tag = ENV["GITHUB_REF_NAME"].to_s if tag.empty?
+  tag = "v#{app_version}" if tag.empty?
+  tag
+end
+
+def app_version
+  info_plist = File.read(INFO_PLIST)
+  match = info_plist.match(%r{<key>CFBundleShortVersionString</key>\s*<string>([^<]+)</string>})
+  UI.user_error!("Could not read CFBundleShortVersionString from #{INFO_PLIST}") unless match
+  match[1]
+end
+
+def safe_filename(value)
+  value.gsub(/[^0-9A-Za-z._-]/, "-")
+end
+
+def github_repository
+  return ENV["GITHUB_REPOSITORY"] unless ENV["GITHUB_REPOSITORY"].to_s.empty?
+
+  remote, = Open3.capture2("git", "-C", REPO_ROOT, "config", "--get", "remote.origin.url")
+  match = remote.strip.match(%r{github.com[:/]([^/]+/[^/.]+)(?:\.git)?$})
+  UI.user_error!("Missing GITHUB_REPOSITORY and could not infer owner/repo from git remote") unless match
+  match[1]
+end
+
+def validate_signing_identity!(identity)
+  UI.user_error!("DEVELOPER_ID_APPLICATION still contains the placeholder 'Your Name'. Use the exact identity from `security find-identity -v -p codesigning`.") if identity.include?("Your Name")
+  UI.user_error!(<<~ERROR) unless identity.start_with?("Developer ID Application:")
+    DEVELOPER_ID_APPLICATION must be a Developer ID Application identity for a public notarized DMG.
+
+    Current value:
+    #{identity}
+
+    Apple Development identities can run/debug local apps, but Gatekeeper distribution requires a Developer ID Application certificate from the Apple Developer Program.
+  ERROR
+
+  identities, = Open3.capture2("security", "find-identity", "-v", "-p", "codesigning")
+  return if identities.include?(%("#{identity}"))
+
+  UI.user_error!(<<~ERROR)
+    Could not find this signing identity in your local keychain:
+    #{identity}
+
+    Install/export a Developer ID Application certificate in Keychain Access, then set DEVELOPER_ID_APPLICATION to the exact value from:
+    security find-identity -v -p codesigning
+
+    Currently available identities:
+    #{identities.strip}
+  ERROR
+end
+
+platform :mac do
+  desc "Build a signed, notarized DMG and upload it to GitHub Releases"
+  lane :release do |options|
+    tag_name = release_tag(options)
+
+    setup_signing
+    app_path = build_signed_app
+    verify_app_signature(app_path: app_path)
+
+    dmg_path = package_dmg(app_path: app_path, tag_name: tag_name)
+    sign_dmg(dmg_path: dmg_path)
+    notarize_dmg(dmg_path: dmg_path)
+    verify_dmg(dmg_path: dmg_path)
+
+    upload_to_github_release(
+      dmg_path: dmg_path,
+      tag_name: tag_name,
+      release_notes: options[:release_notes]
+    )
+  end
+
+  desc "Build a signed, notarized DMG without uploading it"
+  lane :build_dmg do |options|
+    tag_name = release_tag(options)
+
+    setup_signing
+    app_path = build_signed_app
+    verify_app_signature(app_path: app_path)
+
+    dmg_path = package_dmg(app_path: app_path, tag_name: tag_name)
+    sign_dmg(dmg_path: dmg_path)
+    notarize_dmg(dmg_path: dmg_path)
+    verify_dmg(dmg_path: dmg_path)
+
+    UI.success("Built #{dmg_path}")
+  end
+
+  private_lane :setup_signing do
+    next if ENV["MACOS_CERTIFICATE_BASE64"].to_s.empty?
+
+    keychain_name = ENV.fetch("KEYCHAIN_NAME", "wisper-build.keychain")
+    keychain_password = env!("KEYCHAIN_PASSWORD")
+
+    create_keychain(
+      name: keychain_name,
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600,
+      lock_when_sleeps: false
+    )
+
+    FileUtils.mkdir_p(BUILD_DIR)
+    certificate_path = File.join(BUILD_DIR, "developer_id_application.p12")
+    File.binwrite(certificate_path, Base64.decode64(env!("MACOS_CERTIFICATE_BASE64")))
+
+    import_certificate(
+      certificate_path: certificate_path,
+      certificate_password: env!("MACOS_CERTIFICATE_PASSWORD"),
+      keychain_name: keychain_name,
+      keychain_password: keychain_password,
+      log_output: false
+    )
+
+    keychain_path = File.expand_path("~/Library/Keychains/#{keychain_name}")
+    keychain_path = "#{keychain_path}-db" if !File.exist?(keychain_path) && File.exist?("#{keychain_path}-db")
+    keychain_path = keychain_name unless File.exist?(keychain_path)
+    sh("security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k #{keychain_password.shellescape} #{keychain_path.shellescape}")
+    FileUtils.rm_f(certificate_path)
+  end
+
+  private_lane :build_signed_app do
+    team_id = env!("APPLE_TEAM_ID")
+    identity = env!("DEVELOPER_ID_APPLICATION")
+    validate_signing_identity!(identity)
+
+    archive_path = File.join(BUILD_DIR, "#{APP_NAME}.xcarchive")
+    export_options_path = File.join(BUILD_DIR, "ExportOptions.plist")
+
+    FileUtils.rm_rf(BUILD_DIR)
+    FileUtils.mkdir_p(BUILD_DIR)
+    write_export_options(export_options_path)
+
+    sh(
+      "xcodebuild archive" \
+      " -project #{PROJECT.shellescape}" \
+      " -scheme #{SCHEME.shellescape}" \
+      " -configuration Release" \
+      " -destination #{'generic/platform=macOS'.shellescape}" \
+      " -archivePath #{archive_path.shellescape}" \
+      " DEVELOPMENT_TEAM=#{team_id.shellescape}" \
+      " CODE_SIGN_STYLE=Automatic" \
+      " OTHER_CODE_SIGN_FLAGS=#{'--timestamp'.shellescape}"
+    )
+
+    sh(
+      "xcodebuild -exportArchive" \
+      " -archivePath #{archive_path.shellescape}" \
+      " -exportPath #{EXPORT_PATH.shellescape}" \
+      " -exportOptionsPlist #{export_options_path.shellescape}"
+    )
+
+    app_path = Dir[File.join(EXPORT_PATH, "*.app")].first
+    UI.user_error!("Export did not produce a .app in #{EXPORT_PATH}") unless app_path
+    app_path
+  end
+
+  private_lane :verify_app_signature do |options|
+    app_path = options[:app_path]
+
+    sh("codesign --verify --deep --strict --verbose=2 #{app_path.shellescape}")
+  end
+
+  private_lane :package_dmg do |options|
+    app_path = options[:app_path]
+    tag_name = options[:tag_name]
+    stage_dir = File.join(DMG_DIR, "stage")
+    dmg_path = File.join(DMG_DIR, "#{APP_NAME}-#{safe_filename(tag_name)}.dmg")
+
+    FileUtils.rm_rf(DMG_DIR)
+    FileUtils.mkdir_p(stage_dir)
+    FileUtils.cp_r(app_path, stage_dir)
+    FileUtils.ln_s("/Applications", File.join(stage_dir, "Applications"))
+
+    sh(
+      "hdiutil create" \
+      " -volname #{"#{APP_NAME} #{tag_name}".shellescape}" \
+      " -srcfolder #{stage_dir.shellescape}" \
+      " -ov" \
+      " -format UDZO" \
+      " #{dmg_path.shellescape}"
+    )
+
+    dmg_path
+  end
+
+  private_lane :sign_dmg do |options|
+    dmg_path = options[:dmg_path]
+
+    sh(
+      "codesign --force" \
+      " --sign #{env!("DEVELOPER_ID_APPLICATION").shellescape}" \
+      " --timestamp" \
+      " #{dmg_path.shellescape}"
+    )
+  end
+
+  private_lane :notarize_dmg do |options|
+    dmg_path = options[:dmg_path]
+
+    sh(
+      "xcrun notarytool submit #{dmg_path.shellescape}" \
+      " --apple-id #{env!("APPLE_ID").shellescape}" \
+      " --password #{env!("APPLE_APP_SPECIFIC_PASSWORD").shellescape}" \
+      " --team-id #{env!("APPLE_TEAM_ID").shellescape}" \
+      " --wait"
+    )
+    sh("xcrun stapler staple #{dmg_path.shellescape}")
+  end
+
+  private_lane :verify_dmg do |options|
+    dmg_path = options[:dmg_path]
+
+    sh("codesign --verify --verbose=2 #{dmg_path.shellescape}")
+    sh("spctl -a -vv -t open --context context:primary-signature #{dmg_path.shellescape}")
+  end
+
+  private_lane :upload_to_github_release do |options|
+    tag_name = options[:tag_name]
+    notes = options[:release_notes].to_s
+    notes = "Signed and notarized macOS DMG for #{tag_name}." if notes.empty?
+
+    set_github_release(
+      repository_name: github_repository,
+      api_bearer: env!("GITHUB_TOKEN"),
+      name: "#{APP_NAME} #{tag_name}",
+      tag_name: tag_name,
+      description: notes,
+      commitish: ENV["GITHUB_SHA"],
+      upload_assets: [options[:dmg_path]],
+      is_draft: false,
+      is_prerelease: tag_name.include?("-")
+    )
+  end
+end
