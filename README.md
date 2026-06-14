@@ -45,7 +45,7 @@ xcodebuild -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destin
 
 ## Releases
 
-Release builds are automated locally with Fastlane. The release lane builds a Developer ID signed app, packages it into a signed and notarized DMG, and uploads the DMG to the matching GitHub Release.
+Release builds are automated locally with Fastlane. The release lane builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
 
 Required local Fastlane credentials:
 - `APPLE_ID`: Apple Developer account email used for notarization.
@@ -92,3 +92,7 @@ bundle config set path vendor/bundle
 bundle install
 bundle exec fastlane mac release tag:v1.0.0
 ```
+
+The `mac release` lane requires a clean git working tree before it builds. Commit your changes first so the pushed tag points at the exact source used for the DMG.
+
+If the GitHub Release already exists for the tag, Fastlane replaces the existing DMG asset with the newly built notarized DMG.

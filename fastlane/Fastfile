@@ -1,6 +1,9 @@
 require "base64"
 require "fileutils"
+require "json"
+require "net/http"
 require "shellwords"
+require "uri"
 require "open3"
 
 opt_out_usage
@@ -67,6 +70,145 @@ def github_repository
   match[1]
 end
 
+def run_git!(*args)
+  stdout, stderr, status = Open3.capture3("git", "-C", REPO_ROOT, *args)
+  UI.user_error!("git #{args.join(' ')} failed:\n#{stderr}") unless status.success?
+  stdout.strip
+end
+
+def git_ref_exists?(ref)
+  _stdout, _stderr, status = Open3.capture3("git", "-C", REPO_ROOT, "rev-parse", "--verify", "--quiet", ref)
+  status.success?
+end
+
+def remote_tag_commit(tag_name)
+  stdout, _stderr, status = Open3.capture3("git", "-C", REPO_ROOT, "ls-remote", "--tags", "origin", "refs/tags/#{tag_name}^{}")
+  return stdout.split.first if status.success? && !stdout.strip.empty?
+
+  stdout, _stderr, status = Open3.capture3("git", "-C", REPO_ROOT, "ls-remote", "--tags", "origin", "refs/tags/#{tag_name}")
+  return stdout.split.first if status.success? && !stdout.strip.empty?
+
+  nil
+end
+
+def ensure_clean_git_tree!
+  status = run_git!("status", "--porcelain")
+  return if status.empty?
+
+  UI.user_error!(<<~ERROR)
+    Refusing to create a release from a dirty working tree.
+    Commit or stash your changes first so the git tag matches the exact source that produced the DMG.
+  ERROR
+end
+
+def ensure_release_tag!(tag_name)
+  head_sha = run_git!("rev-parse", "HEAD")
+
+  if git_ref_exists?("refs/tags/#{tag_name}")
+    tag_sha = run_git!("rev-list", "-n", "1", tag_name)
+    UI.user_error!("Tag #{tag_name} already exists on #{tag_sha}, not HEAD #{head_sha}.") unless tag_sha == head_sha
+    UI.message("Tag #{tag_name} already exists locally at HEAD.")
+    return
+  end
+
+  run_git!("tag", "-a", tag_name, "-m", "Release #{tag_name}")
+  UI.success("Created git tag #{tag_name}.")
+end
+
+def push_release_tag!(tag_name)
+  local_sha = run_git!("rev-list", "-n", "1", tag_name)
+  remote_sha = remote_tag_commit(tag_name)
+
+  if remote_sha
+    UI.user_error!("Remote tag #{tag_name} points to #{remote_sha}, not local #{local_sha}.") unless remote_sha == local_sha
+    UI.message("Tag #{tag_name} already exists on origin.")
+    return
+  end
+
+  run_git!("push", "origin", "refs/tags/#{tag_name}")
+  UI.success("Pushed git tag #{tag_name} to origin.")
+end
+
+def github_api_base_url
+  ENV.fetch("GITHUB_API_URL", "https://api.github.com").sub(%r{/*\z}, "")
+end
+
+def github_request!(method, path, body: nil, allowed_statuses: [])
+  uri = path.start_with?("http") ? URI(path) : URI("#{github_api_base_url}/#{path}")
+  request = case method
+            when "DELETE" then Net::HTTP::Delete.new(uri)
+            when "GET" then Net::HTTP::Get.new(uri)
+            when "PATCH" then Net::HTTP::Patch.new(uri)
+            when "POST" then Net::HTTP::Post.new(uri)
+            else UI.user_error!("Unsupported GitHub HTTP method: #{method}")
+            end
+
+  request["Accept"] = "application/vnd.github+json"
+  request["Authorization"] = "Bearer #{env!("GITHUB_TOKEN")}"
+  request["User-Agent"] = "wisper-fastlane-release"
+  request["X-GitHub-Api-Version"] = "2022-11-28"
+
+  if body
+    request["Content-Type"] = "application/json"
+    request.body = JSON.dump(body)
+  end
+
+  response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(request) }
+  status = response.code.to_i
+  return nil if allowed_statuses.include?(status)
+
+  UI.user_error!("GitHub #{method} #{uri.path} failed with #{status}: #{response.body}") unless status.between?(200, 299)
+  return nil if response.body.to_s.empty?
+
+  JSON.parse(response.body)
+end
+
+def github_release_for_tag(tag_name)
+  github_request!("GET", "repos/#{github_repository}/releases/tags/#{tag_name}", allowed_statuses: [404])
+end
+
+def create_github_release!(tag_name, notes)
+  github_request!(
+    "POST",
+    "repos/#{github_repository}/releases",
+    body: {
+      tag_name: tag_name,
+      target_commitish: run_git!("rev-parse", "HEAD"),
+      name: "#{APP_NAME} #{tag_name}",
+      body: notes,
+      draft: false,
+      prerelease: tag_name.include?("-")
+    }
+  )
+end
+
+def delete_existing_release_asset!(release, asset_name)
+  assets = github_request!("GET", "repos/#{github_repository}/releases/#{release.fetch("id")}/assets")
+  asset = assets.find { |item| item["name"] == asset_name }
+  return unless asset
+
+  github_request!("DELETE", "repos/#{github_repository}/releases/assets/#{asset.fetch("id")}")
+  UI.message("Deleted existing GitHub Release asset #{asset_name}.")
+end
+
+def upload_release_asset!(release, asset_path)
+  asset_name = File.basename(asset_path)
+  upload_url = release.fetch("upload_url").sub(/\{.*\}\z/, "")
+  uri = URI(upload_url)
+  uri.query = URI.encode_www_form(name: asset_name)
+
+  request = Net::HTTP::Post.new(uri)
+  request["Authorization"] = "Bearer #{env!("GITHUB_TOKEN")}"
+  request["Content-Type"] = "application/octet-stream"
+  request["User-Agent"] = "wisper-fastlane-release"
+  request.body = File.binread(asset_path)
+
+  response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(request) }
+  UI.user_error!("GitHub asset upload failed with #{response.code}: #{response.body}") unless response.code.to_i.between?(200, 299)
+
+  UI.success("Uploaded #{asset_name} to GitHub Release #{release.fetch("html_url")}.")
+end
+
 def validate_signing_identity!(identity)
   UI.user_error!("DEVELOPER_ID_APPLICATION still contains the placeholder 'Your Name'. Use the exact identity from `security find-identity -v -p codesigning`.") if identity.include?("Your Name")
   UI.user_error!(<<~ERROR) unless identity.start_with?("Developer ID Application:")
@@ -98,6 +240,7 @@ platform :mac do
   lane :release do |options|
     tag_name = release_tag(options)
 
+    ensure_clean_git_tree!
     setup_signing
     app_path = build_signed_app
     verify_app_signature(app_path: app_path)
@@ -106,6 +249,9 @@ platform :mac do
     sign_dmg(dmg_path: dmg_path)
     notarize_dmg(dmg_path: dmg_path)
     verify_dmg(dmg_path: dmg_path)
+
+    ensure_release_tag!(tag_name)
+    push_release_tag!(tag_name)
 
     upload_to_github_release(
       dmg_path: dmg_path,
@@ -264,17 +410,12 @@ platform :mac do
     tag_name = options[:tag_name]
     notes = options[:release_notes].to_s
     notes = "Signed and notarized macOS DMG for #{tag_name}." if notes.empty?
+    dmg_path = options[:dmg_path]
 
-    set_github_release(
-      repository_name: github_repository,
-      api_bearer: env!("GITHUB_TOKEN"),
-      name: "#{APP_NAME} #{tag_name}",
-      tag_name: tag_name,
-      description: notes,
-      commitish: ENV["GITHUB_SHA"],
-      upload_assets: [options[:dmg_path]],
-      is_draft: false,
-      is_prerelease: tag_name.include?("-")
-    )
+    release = github_release_for_tag(tag_name)
+    release ||= create_github_release!(tag_name, notes)
+
+    delete_existing_release_asset!(release, File.basename(dmg_path))
+    upload_release_asset!(release, dmg_path)
   end
 end

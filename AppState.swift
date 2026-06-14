@@ -30,11 +30,13 @@ private struct AppSettings: Codable {
     var shortcut: KeyboardShortcut
     var chunkingEnabled: Bool
     var chunkSeconds: Int
+    var audioSourceID: String?
 
     static let `default` = AppSettings(
         shortcut: .default,
         chunkingEnabled: true,
-        chunkSeconds: 480
+        chunkSeconds: 480,
+        audioSourceID: nil
     )
 }
 
@@ -158,6 +160,7 @@ final class AppState: ObservableObject {
     @Published var shortcutCaptureMessage = "Default: Command Shift Space"
     @Published var chunkingEnabled = true
     @Published var chunkSeconds = 480
+    @Published var selectedAudioSourceID: String?
 
     let recorder = RecordingController()
     let shortcutManager = ShortcutManager()
@@ -179,6 +182,8 @@ final class AppState: ObservableObject {
         shortcut = settings.shortcut
         chunkingEnabled = settings.chunkingEnabled
         chunkSeconds = settings.chunkSeconds
+        selectedAudioSourceID = settings.audioSourceID
+        recorder.refreshAudioSources()
         loadHistory()
         refreshAPIKeyStatus()
         configureOverlayActions()
@@ -192,6 +197,14 @@ final class AppState: ObservableObject {
 
     var hasAPIKey: Bool {
         (try? keychain.read())?.isEmpty == false
+    }
+
+    var selectedAudioSourceName: String {
+        recorder.audioSourceName(for: selectedAudioSourceID)
+    }
+
+    var activeAudioSourceName: String {
+        recorder.isRecording ? recorder.lastRecordingSourceName : selectedAudioSourceName
     }
 
     func saveAPIKey(_ value: String) {
@@ -230,9 +243,9 @@ final class AppState: ObservableObject {
         }
 
         do {
-            try await recorder.start()
+            try await recorder.start(audioSourceID: selectedAudioSourceID)
             latestTranscriptText = "Recording..."
-            statusMessage = "Recording from your microphone"
+            statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
             showOverlay()
             startOverlayTimer()
         } catch {
@@ -241,10 +254,17 @@ final class AppState: ObservableObject {
     }
 
     func stopRecording() async {
-        if let url = recorder.stop() {
-            statusMessage = "Saved recording to \(url.lastPathComponent)"
+        do {
+            if let url = try await recorder.stop() {
+                statusMessage = "Saved recording to \(url.lastPathComponent)"
+                stopOverlayTimer()
+                await transcribeRecording(url, durationSeconds: recorder.lastDurationSeconds)
+            }
+        } catch {
             stopOverlayTimer()
-            await transcribeRecording(url, durationSeconds: recorder.lastDurationSeconds)
+            overlayController.hide()
+            errorMessage = error.localizedDescription
+            statusMessage = "Recording failed"
         }
     }
 
@@ -272,23 +292,27 @@ final class AppState: ObservableObject {
 
     func resumeRecording() {
         recorder.resume()
-        statusMessage = "Recording from your microphone"
+        statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
         updateOverlay()
     }
 
-    func discardRecording() {
-        recorder.discard()
-        latestTranscriptText = "Recording discarded."
-        statusMessage = "Ready to record"
-        stopOverlayTimer()
-        overlayController.hide()
+    func discardRecording() async {
+        do {
+            try await recorder.discard()
+            latestTranscriptText = "Recording discarded."
+            statusMessage = "Ready to record"
+            stopOverlayTimer()
+            overlayController.hide()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func restartRecording() async {
         do {
-            try await recorder.restart()
+            try await recorder.restart(audioSourceID: selectedAudioSourceID)
             latestTranscriptText = "Recording..."
-            statusMessage = "Started a fresh recording"
+            statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
             showOverlay()
             startOverlayTimer()
         } catch {
@@ -302,6 +326,21 @@ final class AppState: ObservableObject {
             try saveSettings()
             shortcutManager.register(nextShortcut)
             shortcutCaptureMessage = shortcutManager.statusMessage
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshAudioSources() {
+        recorder.refreshAudioSources()
+        statusMessage = "Audio sources refreshed"
+    }
+
+    func saveAudioSource(_ sourceID: String?) {
+        selectedAudioSourceID = sourceID?.isEmpty == false ? sourceID : nil
+        do {
+            try saveSettings()
+            statusMessage = "Audio source set to \(selectedAudioSourceName)"
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -415,7 +454,7 @@ final class AppState: ObservableObject {
         let pendingItem = Transcript(
             id: id,
             createdAt: startedAt,
-            source: existing?.source ?? "native-mac",
+            source: existing?.source ?? recorder.lastRecordingSourceName,
             originalName: existing?.originalName ?? audioURL.lastPathComponent,
             audioPath: audioURL.path,
             durationSeconds: durationSeconds,
@@ -520,7 +559,9 @@ final class AppState: ObservableObject {
     }
 
     private func configureOverlayActions() {
-        overlayController.onDiscard = { [weak self] in self?.discardRecording() }
+        overlayController.onDiscard = { [weak self] in
+            Task { @MainActor in await self?.discardRecording() }
+        }
         overlayController.onRestart = { [weak self] in
             Task { @MainActor in await self?.restartRecording() }
         }
@@ -603,7 +644,8 @@ final class AppState: ObservableObject {
         let data = try JSONEncoder.wisper.encode(AppSettings(
             shortcut: shortcut,
             chunkingEnabled: chunkingEnabled,
-            chunkSeconds: chunkSeconds
+            chunkSeconds: chunkSeconds,
+            audioSourceID: selectedAudioSourceID
         ))
         try data.write(to: settingsURL, options: .atomic)
     }
