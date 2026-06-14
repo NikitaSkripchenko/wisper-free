@@ -66,6 +66,31 @@ private struct RecordView: View {
                 Text(appState.statusMessage)
                     .foregroundStyle(.secondary)
 
+                Text("Source: \(appState.activeAudioSourceName)")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+
+                HStack(spacing: 8) {
+                    Picker("Audio Source", selection: audioSourceBinding) {
+                        Text("System Default").tag("")
+                        ForEach(appState.recorder.audioSources) { source in
+                            Text(source.name).tag(source.id)
+                        }
+                        if let selectedAudioSourceID = appState.selectedAudioSourceID,
+                           appState.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
+                            Text("Unavailable Source").tag(selectedAudioSourceID)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 320)
+                    .disabled(appState.recorder.isRecording || appState.isProcessing)
+
+                    Button("Refresh") {
+                        appState.refreshAudioSources()
+                    }
+                    .disabled(appState.recorder.isRecording || appState.isProcessing)
+                }
+
                 HStack(spacing: 12) {
                     Button {
                         if appState.recorder.phase == .recording || appState.recorder.phase == .paused {
@@ -93,7 +118,7 @@ private struct RecordView: View {
                     .disabled(appState.recorder.isRecording == false || appState.isProcessing)
 
                     Button(role: .destructive) {
-                        appState.discardRecording()
+                        Task { await appState.discardRecording() }
                     } label: {
                         Label("Discard", systemImage: "trash")
                     }
@@ -160,6 +185,13 @@ private struct RecordView: View {
         if appState.recorder.isPaused { return .orange }
         if appState.recorder.isRecording { return .red }
         return .blue
+    }
+
+    private var audioSourceBinding: Binding<String> {
+        Binding(
+            get: { appState.selectedAudioSourceID ?? "" },
+            set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
+        )
     }
 }
 
@@ -317,6 +349,34 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Audio Source") {
+                Picker("Source", selection: audioSourceBinding) {
+                    Text("System Default").tag("")
+                    ForEach(appState.recorder.audioSources) { source in
+                        Text(source.name).tag(source.id)
+                    }
+                    if let selectedAudioSourceID = appState.selectedAudioSourceID,
+                       appState.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
+                        Text("Unavailable Source").tag(selectedAudioSourceID)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(appState.recorder.isRecording || appState.isProcessing)
+
+                HStack {
+                    LabeledContent("Selected", value: appState.selectedAudioSourceName)
+                    Spacer()
+                    Button("Refresh") {
+                        appState.refreshAudioSources()
+                    }
+                    .disabled(appState.recorder.isRecording || appState.isProcessing)
+                }
+
+                Text("Choose the input Wisper should use for new recordings. Existing recordings keep their original source.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Global Shortcut") {
                 LabeledContent("Current", value: appState.shortcut.displayText)
 
@@ -363,6 +423,13 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(24)
         .navigationTitle("Settings")
+    }
+
+    private var audioSourceBinding: Binding<String> {
+        Binding(
+            get: { appState.selectedAudioSourceID ?? "" },
+            set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
+        )
     }
 }
 
