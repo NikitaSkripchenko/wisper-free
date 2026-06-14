@@ -52,7 +52,7 @@ Required local Fastlane credentials:
 - `APPLE_TEAM_ID`: Apple Developer Team ID.
 - `APPLE_APP_SPECIFIC_PASSWORD`: App-specific password for `notarytool`.
 - `DEVELOPER_ID_APPLICATION`: Full Developer ID Application identity name, for example `Developer ID Application: Your Name (TEAMID)`.
-- `GITHUB_TOKEN`: GitHub token with `contents:write` permission for uploading the release asset.
+- `GITHUB_TOKEN`: GitHub token with Contents read/write access to create tags, create releases, and upload the DMG asset. For a fine-grained token, grant this repo `Contents: Read and write`. For a classic token, use `public_repo` for a public repo or `repo` for a private repo.
 
 Optional local environment variable:
 - `GITHUB_REPOSITORY`: GitHub repository in `owner/repo` format. If omitted, Fastlane tries to infer it from `remote.origin.url`.
@@ -95,4 +95,8 @@ bundle exec fastlane mac release tag:v1.0.0
 
 The `mac release` lane requires a clean git working tree before it builds. Commit your changes first so the pushed tag points at the exact source used for the DMG.
 
+The commit you are releasing must already exist on GitHub before running `mac release`. Fastlane uses `GITHUB_TOKEN` to publish the tag and release asset, but it does not push branch commits.
+
 If the GitHub Release already exists for the tag, Fastlane replaces the existing DMG asset with the newly built notarized DMG.
+
+Fastlane publishes git tags through the GitHub API using `GITHUB_TOKEN`, so local SSH access to `origin` is not required.

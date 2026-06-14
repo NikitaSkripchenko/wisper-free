@@ -3,6 +3,7 @@ require "fileutils"
 require "json"
 require "net/http"
 require "shellwords"
+require "time"
 require "uri"
 require "open3"
 
@@ -19,7 +20,7 @@ EXPORT_PATH = File.join(BUILD_DIR, "export")
 DMG_DIR = File.join(BUILD_DIR, "dmg")
 
 def env!(name)
-  value = ENV[name]
+  value = ENV[name].to_s.strip
   UI.user_error!("Missing required environment variable: #{name}") if value.to_s.empty?
   value
 end
@@ -82,13 +83,18 @@ def git_ref_exists?(ref)
 end
 
 def remote_tag_commit(tag_name)
-  stdout, _stderr, status = Open3.capture3("git", "-C", REPO_ROOT, "ls-remote", "--tags", "origin", "refs/tags/#{tag_name}^{}")
-  return stdout.split.first if status.success? && !stdout.strip.empty?
+  ref = github_request!("GET", "repos/#{github_repository}/git/ref/tags/#{tag_name}", allowed_statuses: [404])
+  return nil unless ref
 
-  stdout, _stderr, status = Open3.capture3("git", "-C", REPO_ROOT, "ls-remote", "--tags", "origin", "refs/tags/#{tag_name}")
-  return stdout.split.first if status.success? && !stdout.strip.empty?
+  object = ref.fetch("object")
+  return object.fetch("sha") if object.fetch("type") == "commit"
 
-  nil
+  if object.fetch("type") == "tag"
+    tag = github_request!("GET", "repos/#{github_repository}/git/tags/#{object.fetch("sha")}")
+    return tag.fetch("object").fetch("sha")
+  end
+
+  UI.user_error!("Remote tag #{tag_name} points to unsupported Git object type #{object.fetch("type")}")
 end
 
 def ensure_clean_git_tree!
@@ -125,8 +131,32 @@ def push_release_tag!(tag_name)
     return
   end
 
-  run_git!("push", "origin", "refs/tags/#{tag_name}")
-  UI.success("Pushed git tag #{tag_name} to origin.")
+  tag = github_request!(
+    "POST",
+    "repos/#{github_repository}/git/tags",
+    body: {
+      tag: tag_name,
+      message: "Release #{tag_name}",
+      object: local_sha,
+      type: "commit",
+      tagger: {
+        name: run_git!("config", "user.name"),
+        email: run_git!("config", "user.email"),
+        date: Time.now.utc.iso8601
+      }
+    }
+  )
+
+  github_request!(
+    "POST",
+    "repos/#{github_repository}/git/refs",
+    body: {
+      ref: "refs/tags/#{tag_name}",
+      sha: tag.fetch("sha")
+    }
+  )
+
+  UI.success("Published git tag #{tag_name} to GitHub using GITHUB_TOKEN.")
 end
 
 def github_api_base_url
@@ -157,10 +187,60 @@ def github_request!(method, path, body: nil, allowed_statuses: [])
   status = response.code.to_i
   return nil if allowed_statuses.include?(status)
 
+  if status == 401
+    UI.user_error!(<<~ERROR)
+      GitHub rejected GITHUB_TOKEN with 401 Bad credentials.
+
+      Create a new GitHub token and put it in fastlane/.env as GITHUB_TOKEN.
+      For a fine-grained token, select repository #{github_repository} and grant:
+      - Contents: Read and write
+      - Metadata: Read-only
+
+      Do not include quotes, spaces, or placeholder text around the token.
+    ERROR
+  end
+
+  if status == 403
+    UI.user_error!(<<~ERROR)
+      GitHub accepted GITHUB_TOKEN but denied this request with 403.
+
+      The token likely lacks permission for #{github_repository}. Grant Contents: Read and write, then rerun the lane.
+      Response: #{response.body}
+    ERROR
+  end
+
+  if status == 404 && !allowed_statuses.include?(404)
+    UI.user_error!(<<~ERROR)
+      GitHub returned 404 for #{github_repository}.
+
+      Either GITHUB_REPOSITORY is wrong, the repo does not exist, or GITHUB_TOKEN does not have access to it.
+      Response: #{response.body}
+    ERROR
+  end
+
   UI.user_error!("GitHub #{method} #{uri.path} failed with #{status}: #{response.body}") unless status.between?(200, 299)
   return nil if response.body.to_s.empty?
 
   JSON.parse(response.body)
+end
+
+def validate_github_token!
+  token = env!("GITHUB_TOKEN")
+  UI.user_error!("GITHUB_TOKEN still looks like a placeholder. Put a real GitHub token in fastlane/.env.") if token.include?("your-github-token")
+
+  github_request!("GET", "repos/#{github_repository}")
+  UI.success("GitHub token can access #{github_repository}.")
+end
+
+def ensure_head_commit_exists_on_github!
+  head_sha = run_git!("rev-parse", "HEAD")
+  commit = github_request!("GET", "repos/#{github_repository}/commits/#{head_sha}", allowed_statuses: [404])
+  return if commit
+
+  UI.user_error!(<<~ERROR)
+    HEAD commit #{head_sha} does not exist on GitHub yet.
+    Push your branch commit first, then rerun Fastlane. GitHub cannot create a release tag that points to a local-only commit.
+  ERROR
 end
 
 def github_release_for_tag(tag_name)
@@ -241,6 +321,8 @@ platform :mac do
     tag_name = release_tag(options)
 
     ensure_clean_git_tree!
+    validate_github_token!
+    ensure_head_commit_exists_on_github!
     setup_signing
     app_path = build_signed_app
     verify_app_signature(app_path: app_path)
