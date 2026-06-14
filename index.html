@@ -80,6 +80,7 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
+      min-height: 44px;
       font-weight: 700;
       letter-spacing: 0;
     }
@@ -100,7 +101,7 @@
     .nav-actions a {
       display: inline-flex;
       align-items: center;
-      min-height: 38px;
+      min-height: 44px;
       padding: 0 14px;
       border: 1px solid transparent;
       border-radius: 999px;
@@ -433,6 +434,9 @@
     }
 
     .control {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-width: 112px;
       min-height: 38px;
       border: 1px solid rgba(196, 199, 205, 0.86);
@@ -515,6 +519,9 @@
     }
 
     .overlay-stop {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-width: 52px;
       height: 32px;
       border: 0;
@@ -666,6 +673,9 @@
     }
 
     footer a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
       font-weight: 700;
       color: var(--ink);
     }
@@ -974,9 +984,9 @@
                   <div class="timer">00:18</div>
                   <div class="status">Recording quietly in the background</div>
                   <div class="control-row">
-                    <button class="control primary" type="button">Stop</button>
-                    <button class="control" type="button">Pause</button>
-                    <button class="control" type="button">Discard</button>
+                    <span class="control primary">Stop</span>
+                    <span class="control">Pause</span>
+                    <span class="control">Discard</span>
                   </div>
                 </div>
                 <div class="transcript">
@@ -998,7 +1008,7 @@
             <strong>Recording</strong>
             <span>00:18, ready when you are</span>
           </div>
-          <button class="overlay-stop" type="button">Stop</button>
+          <span class="overlay-stop">Stop</span>
         </div>
       </section>
 
