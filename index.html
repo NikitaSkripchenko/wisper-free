@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Wisper turns recordings into clean transcripts and keeps your notes easy to find on Mac.">
+  <meta property="og:title" content="Wisper">
+  <meta property="og:description" content="Record, transcribe, and keep every note easy to find.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="Assets.xcassets/AppIcon.appiconset/app-icon-1024.png">
+  <title>Wisper | Transcription for Mac</title>
+  <link rel="icon" href="Assets.xcassets/AppIcon.appiconset/app-icon-128.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #171717;
+      --muted: #606268;
+      --soft: #8a8d94;
+      --line: #d8dadd;
+      --paper: #f7f5f0;
+      --surface: #ffffff;
+      --panel: rgba(255, 255, 255, 0.82);
+      --blue: #0a84ff;
+      --blue-dark: #0069d9;
+      --red: #ff3b30;
+      --green: #30d158;
+      --amber: #c56f00;
+      --shadow: 0 24px 80px rgba(32, 34, 38, 0.16);
+      --radius: 28px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      overflow: clip;
+    }
+
+    .topbar {
+      position: fixed;
+      z-index: 20;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px clamp(18px, 5vw, 72px);
+      border-bottom: 1px solid rgba(216, 218, 221, 0.7);
+      background: rgba(247, 245, 240, 0.78);
+      -webkit-backdrop-filter: blur(22px) saturate(1.2);
+      backdrop-filter: blur(22px) saturate(1.2);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .brand img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-actions a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 0 14px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .nav-actions a:hover {
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.72);
+      border-color: rgba(216, 218, 221, 0.9);
+    }
+
+    .hero {
+      position: relative;
+      display: grid;
+      align-items: center;
+      min-height: min(860px, 92svh);
+      padding: 118px clamp(18px, 5vw, 72px) 76px;
+      isolation: isolate;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .hero-copy {
+      position: relative;
+      z-index: 3;
+      max-width: 600px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--red);
+      box-shadow: 0 0 0 5px rgba(255, 59, 48, 0.12);
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 620px;
+      font-size: 158px;
+      line-height: 0.82;
+      letter-spacing: 0;
+      font-weight: 800;
+    }
+
+    .lead {
+      max-width: 520px;
+      margin: 26px 0 0;
+      color: #34363b;
+      font-size: 30px;
+      line-height: 1.18;
+      letter-spacing: 0;
+      font-weight: 650;
+    }
+
+    .sublead {
+      max-width: 540px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.6;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 50px;
+      padding: 0 20px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-weight: 750;
+      white-space: nowrap;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+    }
+
+    .button.primary {
+      color: white;
+      background: var(--blue);
+      box-shadow: 0 14px 32px rgba(10, 132, 255, 0.28);
+    }
+
+    .button.primary:hover {
+      background: var(--blue-dark);
+    }
+
+    .button.secondary {
+      color: #24262b;
+      background: rgba(255, 255, 255, 0.78);
+      border-color: rgba(198, 201, 206, 0.9);
+    }
+
+    .button.secondary:hover {
+      background: white;
+      border-color: #aeb2b8;
+    }
+
+    .button svg {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+    }
+
+    .requirements {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .requirements span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 11px;
+      border: 1px solid rgba(216, 218, 221, 0.9);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+
+    .product-shot {
+      position: absolute;
+      z-index: 1;
+      right: clamp(24px, 5vw, 72px);
+      bottom: 42px;
+      width: min(680px, 48vw);
+      min-width: 580px;
+      transform: rotate(-2deg);
+      filter: drop-shadow(var(--shadow));
+      pointer-events: none;
+    }
+
+    .app-window {
+      overflow: hidden;
+      border: 1px solid rgba(172, 176, 184, 0.72);
+      border-radius: var(--radius);
+      background: rgba(250, 250, 250, 0.88);
+      -webkit-backdrop-filter: blur(28px) saturate(1.1);
+      backdrop-filter: blur(28px) saturate(1.1);
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 46px;
+      padding: 0 18px;
+      border-bottom: 1px solid rgba(216, 218, 221, 0.78);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .traffic {
+      display: flex;
+      gap: 8px;
+    }
+
+    .traffic span {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: #ff5f57;
+    }
+
+    .traffic span:nth-child(2) {
+      background: #ffbd2e;
+    }
+
+    .traffic span:nth-child(3) {
+      background: #28c840;
+    }
+
+    .window-title {
+      flex: 1;
+      text-align: center;
+      color: var(--soft);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .window-body {
+      display: grid;
+      grid-template-columns: 215px minmax(0, 1fr);
+      min-height: 520px;
+    }
+
+    .sidebar {
+      padding: 18px 12px;
+      border-right: 1px solid rgba(216, 218, 221, 0.72);
+      background: rgba(243, 244, 246, 0.76);
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 38px;
+      padding: 0 12px;
+      border-radius: 10px;
+      color: #55585f;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .sidebar-item.active {
+      color: #101114;
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: inset 0 0 0 1px rgba(216, 218, 221, 0.55);
+    }
+
+    .sidebar-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 7px;
+      background: #d7d9dd;
+    }
+
+    .sidebar-item.active .sidebar-dot {
+      background: var(--blue);
+    }
+
+    .main-panel {
+      padding: 32px;
+      background: rgba(255, 255, 255, 0.6);
+    }
+
+    .panel-label {
+      margin: 0 0 8px;
+      color: var(--soft);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .panel-title {
+      margin: 0;
+      color: #1d1f24;
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .record-panel {
+      display: grid;
+      justify-items: center;
+      align-content: center;
+      min-height: 270px;
+      margin-top: 28px;
+      border: 1px solid rgba(216, 218, 221, 0.82);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.74);
+    }
+
+    .record-ring {
+      display: grid;
+      place-items: center;
+      width: 118px;
+      height: 118px;
+      border-radius: 999px;
+      background: rgba(255, 59, 48, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.18);
+    }
+
+    .record-ring svg {
+      width: 58px;
+      height: 58px;
+      color: var(--red);
+    }
+
+    .timer {
+      margin-top: 18px;
+      font-variant-numeric: tabular-nums;
+      font-size: 42px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .control-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .control {
+      min-width: 112px;
+      min-height: 38px;
+      border: 1px solid rgba(196, 199, 205, 0.86);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #2d3035;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .control.primary {
+      color: white;
+      border-color: var(--blue);
+      background: var(--blue);
+    }
+
+    .transcript {
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid rgba(216, 218, 221, 0.82);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.68);
+    }
+
+    .transcript h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .transcript p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .overlay-demo {
+      position: absolute;
+      z-index: 2;
+      right: clamp(20px, 5vw, 72px);
+      bottom: 108px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      width: min(380px, calc(100vw - 36px));
+      min-height: 94px;
+      padding: 14px;
+      border: 1px solid rgba(185, 188, 195, 0.8);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.82);
+      -webkit-backdrop-filter: blur(22px) saturate(1.15);
+      backdrop-filter: blur(22px) saturate(1.15);
+      box-shadow: 0 20px 64px rgba(32, 34, 38, 0.16);
+      pointer-events: none;
+    }
+
+    .overlay-icon {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: rgba(255, 59, 48, 0.1);
+      color: var(--red);
+    }
+
+    .overlay-copy strong {
+      display: block;
+      color: #24262b;
+      font-size: 14px;
+    }
+
+    .overlay-copy span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .overlay-stop {
+      min-width: 52px;
+      height: 32px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--blue);
+      color: white;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .section {
+      padding: 72px clamp(18px, 5vw, 72px);
+    }
+
+    .section-inner {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+    }
+
+    .download-strip {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 24px;
+      padding: 28px;
+      border: 1px solid rgba(216, 218, 221, 0.9);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .download-strip h2 {
+      margin: 0;
+      font-size: 44px;
+      line-height: 1.03;
+      letter-spacing: 0;
+    }
+
+    .download-strip p {
+      max-width: 690px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .feature-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      border: 1px solid rgba(216, 218, 221, 0.9);
+      border-radius: 24px;
+      background: var(--line);
+    }
+
+    .feature {
+      min-height: 245px;
+      padding: 28px;
+      background: rgba(255, 255, 255, 0.65);
+    }
+
+    .feature svg {
+      width: 30px;
+      height: 30px;
+      color: var(--blue);
+    }
+
+    .feature:nth-child(2) svg {
+      color: var(--green);
+    }
+
+    .feature:nth-child(3) svg {
+      color: var(--amber);
+    }
+
+    .feature h2 {
+      margin: 36px 0 10px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.58;
+    }
+
+    .privacy {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: clamp(28px, 5vw, 72px);
+      align-items: start;
+      padding-top: 0;
+    }
+
+    .privacy h2 {
+      margin: 0;
+      font-size: 68px;
+      line-height: 0.96;
+      letter-spacing: 0;
+    }
+
+    .privacy-copy {
+      display: grid;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.6;
+    }
+
+    .privacy-copy p {
+      margin: 0;
+    }
+
+    .privacy-copy strong {
+      color: var(--ink);
+    }
+
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 36px clamp(18px, 5vw, 72px);
+      border-top: 1px solid rgba(216, 218, 221, 0.9);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    footer a {
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    @media (max-width: 980px) {
+      .hero {
+        display: block;
+        min-height: auto;
+        padding-top: 104px;
+        padding-bottom: 64px;
+      }
+
+      .hero-copy {
+        max-width: 100%;
+      }
+
+      h1 {
+        font-size: 118px;
+      }
+
+      .lead {
+        font-size: 26px;
+      }
+
+      .download-strip h2 {
+        font-size: 36px;
+      }
+
+      .privacy h2 {
+        font-size: 52px;
+      }
+
+      .product-shot {
+        position: relative;
+        right: auto;
+        bottom: auto;
+        width: min(720px, 100%);
+        min-width: 0;
+        margin-top: 42px;
+        transform: rotate(-1deg);
+      }
+
+      .overlay-demo {
+        position: relative;
+        right: auto;
+        bottom: auto;
+        width: min(380px, 100%);
+        margin: -74px 0 0 auto;
+      }
+
+      .overlay-demo {
+        right: 18px;
+        bottom: 34px;
+      }
+
+      .feature-list {
+        grid-template-columns: 1fr;
+      }
+
+      .feature {
+        min-height: auto;
+      }
+
+      .privacy,
+      .download-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .download-strip .actions {
+        margin-top: 0;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .topbar {
+        position: static;
+        padding: 14px 18px;
+      }
+
+      .nav-actions a:first-child {
+        display: none;
+      }
+
+      .hero {
+        display: block;
+        padding: 56px 18px 44px;
+      }
+
+      h1 {
+        font-size: 74px;
+      }
+
+      .lead {
+        font-size: 22px;
+      }
+
+      .download-strip h2 {
+        font-size: 30px;
+      }
+
+      .privacy h2 {
+        font-size: 38px;
+      }
+
+      .actions,
+      .download-strip .actions {
+        align-items: stretch;
+        width: 100%;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .product-shot {
+        position: relative;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        width: 100%;
+        min-width: 0;
+        margin-top: 32px;
+        transform: none;
+      }
+
+      .window-body {
+        grid-template-columns: 112px minmax(0, 1fr);
+        min-height: 382px;
+      }
+
+      .sidebar {
+        padding: 12px 7px;
+      }
+
+      .sidebar-item {
+        gap: 6px;
+        height: 34px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+
+      .sidebar-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 5px;
+      }
+
+      .main-panel {
+        padding: 18px;
+      }
+
+      .panel-label {
+        font-size: 10px;
+      }
+
+      .panel-title {
+        font-size: 20px;
+      }
+
+      .record-panel {
+        min-height: 205px;
+        margin-top: 16px;
+      }
+
+      .record-ring {
+        width: 82px;
+        height: 82px;
+      }
+
+      .record-ring svg {
+        width: 42px;
+        height: 42px;
+      }
+
+      .timer {
+        margin-top: 12px;
+        font-size: 32px;
+      }
+
+      .status {
+        font-size: 12px;
+      }
+
+      .control-row {
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 14px;
+      }
+
+      .control {
+        min-width: 72px;
+        min-height: 32px;
+        font-size: 11px;
+      }
+
+      .transcript {
+        margin-top: 12px;
+        padding: 12px;
+      }
+
+      .transcript h3,
+      .transcript p {
+        font-size: 12px;
+      }
+
+      .overlay-demo {
+        position: relative;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        width: auto;
+        margin-top: -58px;
+      }
+
+      .section {
+        padding: 52px 18px;
+      }
+
+      .download-strip,
+      .feature {
+        padding: 22px;
+      }
+
+      footer {
+        padding: 30px 18px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" aria-label="Site navigation">
+      <a class="brand" href="#" aria-label="Wisper home">
+        <img src="Assets.xcassets/AppIcon.appiconset/app-icon-128.png" alt="" width="32" height="32">
+        <span>Wisper</span>
+      </a>
+      <nav class="nav-actions" aria-label="Primary">
+        <a href="https://github.com/NikitaSkripchenko/wisper-free/releases/latest">Download</a>
+        <a href="https://github.com/NikitaSkripchenko/wisper-free">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Transcription for busy days</p>
+          <h1 id="hero-title">Wisper</h1>
+          <p class="lead">The calm way to turn spoken thoughts into useful notes.</p>
+          <p class="sublead">Capture meetings, calls, ideas, and quick voice notes. Wisper gives you a clean transcript you can copy, revisit, and move on from.</p>
+          <div class="actions" aria-label="Download and source links">
+            <a class="button primary" href="https://github.com/NikitaSkripchenko/wisper-free/releases/latest">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Download for Mac
+            </a>
+            <a class="button secondary" href="https://github.com/NikitaSkripchenko/wisper-free">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 .9C5.86.9.9 5.86.9 12c0 4.9 3.18 9.06 7.59 10.53.55.1.75-.24.75-.53v-1.96c-3.09.67-3.74-1.31-3.74-1.31-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.11.08 1.7 1.15 1.7 1.15.99 1.69 2.6 1.2 3.23.92.1-.72.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.41.11-2.94 0 0 .93-.3 3.05 1.14A10.5 10.5 0 0 1 12 6.39c.94 0 1.88.13 2.76.37 2.12-1.44 3.05-1.14 3.05-1.14.6 1.53.22 2.66.11 2.94.71.78 1.14 1.77 1.14 2.98 0 4.26-2.59 5.2-5.06 5.48.4.35.76 1.03.76 2.08V22c0 .29.2.64.76.53A11.12 11.12 0 0 0 23.1 12C23.1 5.86 18.14.9 12 .9Z"/>
+              </svg>
+              GitHub
+            </a>
+          </div>
+          <div class="requirements" aria-label="Requirements">
+            <span>No meeting bot</span>
+            <span>Saved history</span>
+            <span>Works from your Mac</span>
+          </div>
+        </div>
+
+        <div class="product-shot" aria-hidden="true">
+          <div class="app-window">
+            <div class="titlebar">
+              <div class="traffic"><span></span><span></span><span></span></div>
+              <div class="window-title">Wisper</div>
+            </div>
+            <div class="window-body">
+              <aside class="sidebar">
+                <div class="sidebar-item active"><span class="sidebar-dot"></span>Record</div>
+                <div class="sidebar-item"><span class="sidebar-dot"></span>History</div>
+                <div class="sidebar-item"><span class="sidebar-dot"></span>Settings</div>
+              </aside>
+              <div class="main-panel">
+                <p class="panel-label">Voice note</p>
+                <h2 class="panel-title">Capture the conversation.</h2>
+                <div class="record-panel">
+                  <div class="record-ring">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/>
+                      <path d="M18 11a6 6 0 0 1-12 0M12 17v4M8.5 21h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <div class="timer">00:18</div>
+                  <div class="status">Recording quietly in the background</div>
+                  <div class="control-row">
+                    <button class="control primary" type="button">Stop</button>
+                    <button class="control" type="button">Pause</button>
+                    <button class="control" type="button">Discard</button>
+                  </div>
+                </div>
+                <div class="transcript">
+                  <h3>Latest Transcript</h3>
+                  <p>"Send the recap to the team and turn the last section into a checklist."</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="overlay-demo" aria-hidden="true">
+          <div class="overlay-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+              <path d="M4 13c1.1 0 1.1-6 2.2-6s1.1 10 2.2 10 1.1-14 2.2-14 1.1 18 2.2 18S13.9 7 15 7s1.1 10 2.2 10S18.3 9 19.4 9 20.5 13 22 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="overlay-copy">
+            <strong>Recording</strong>
+            <span>00:18, ready when you are</span>
+          </div>
+          <button class="overlay-stop" type="button">Stop</button>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="download-title">
+        <div class="section-inner download-strip">
+          <div>
+            <h2 id="download-title">Start with your next conversation.</h2>
+            <p>Download Wisper for Mac, press record, and leave with a transcript you can actually use. No meeting guest. No extra tab to manage.</p>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/NikitaSkripchenko/wisper-free/releases/latest">Download</a>
+            <a class="button secondary" href="https://github.com/NikitaSkripchenko/wisper-free">GitHub</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-label="Highlights">
+        <div class="section-inner feature-list">
+          <article class="feature">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4Z" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M19 10a7 7 0 0 1-14 0M12 17v4M8 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <h2>Stay in flow</h2>
+            <p>Start a recording without rearranging your day. Wisper stays small, quiet, and close by while you focus on the conversation.</p>
+          </article>
+          <article class="feature">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="M7 10V7a5 5 0 0 1 10 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M6 10h12v10H6V10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              <path d="M12 14v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <h2>Keep the good parts</h2>
+            <p>Turn recordings into readable notes, then copy the text, save it, or come back later when you need the exact phrasing.</p>
+          </article>
+          <article class="feature">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="M5 4h14v16H5V4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <h2>Find it later</h2>
+            <p>Every finished transcript lands in your history, so the quote, task, or follow-up is not lost in a pile of audio files.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section privacy" aria-labelledby="privacy-title">
+        <div>
+          <h2 id="privacy-title">Quiet software for noisy days.</h2>
+        </div>
+        <div class="privacy-copy">
+          <p><strong>Nothing joins your call.</strong> Wisper records from your Mac, so your notes do not announce themselves in every meeting.</p>
+          <p><strong>Designed to disappear.</strong> A small floating control lets you pause, stop, or discard without pulling attention away from the person speaking.</p>
+          <p><strong>Open to inspect.</strong> The app is public on GitHub for anyone who wants to see how it works.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Wisper for Mac.</span>
+      <span><a href="https://github.com/NikitaSkripchenko/wisper-free/releases/latest">Download</a> / <a href="https://github.com/NikitaSkripchenko/wisper-free">GitHub</a></span>
+    </footer>
+  </div>
+</body>
+</html>
