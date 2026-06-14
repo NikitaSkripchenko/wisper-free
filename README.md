@@ -45,7 +45,22 @@ xcodebuild -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destin
 
 ## Releases
 
-Release builds are automated locally with Fastlane. The release lane builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
+Release builds are automated with GitHub Actions on every non-release commit pushed to `main`, including merged PRs. The workflow bumps the app patch version by default, builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, commits the version bump back to `main`, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
+
+The workflow also supports manual runs from the GitHub Actions tab. Use `patch`, `minor`, or `major` to choose the bump type, or `none` to rebuild and republish the current checked-in version after a failed release attempt.
+
+For a public repo on a free GitHub account, this uses the standard GitHub-hosted `macos-15` runner and the built-in `GITHUB_TOKEN`; no paid runner or personal access token is required. In repository settings, enable Actions workflow permissions for `Read and write permissions` so the workflow can push the version bump commit, create tags, and create releases. If `main` is branch-protected against direct pushes, the default `GITHUB_TOKEN` may be blocked; use a ruleset/bypass that permits the workflow's release commit or switch to a release-PR flow instead.
+
+Required GitHub repository secrets:
+- `APPLE_ID`: Apple Developer account email used for notarization.
+- `APPLE_TEAM_ID`: Apple Developer Team ID.
+- `APPLE_APP_SPECIFIC_PASSWORD`: App-specific password for `notarytool`.
+- `DEVELOPER_ID_APPLICATION`: Full Developer ID Application identity name, for example `Developer ID Application: Your Name (TEAMID)`.
+- `MACOS_CERTIFICATE_BASE64`: Base64-encoded `.p12` Developer ID Application certificate.
+- `MACOS_CERTIFICATE_PASSWORD`: Password for the `.p12` certificate.
+- `KEYCHAIN_PASSWORD`: Temporary CI keychain password.
+
+Local release builds are still available with Fastlane. The release lane builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
 
 Required local Fastlane credentials:
 - `APPLE_ID`: Apple Developer account email used for notarization.

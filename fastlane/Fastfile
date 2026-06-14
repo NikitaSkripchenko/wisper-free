@@ -12,6 +12,7 @@ default_platform(:mac)
 
 REPO_ROOT = File.expand_path("..", __dir__)
 PROJECT = File.join(REPO_ROOT, "Wisper.xcodeproj")
+PROJECT_FILE = File.join(PROJECT, "project.pbxproj")
 SCHEME = "Wisper"
 APP_NAME = "Wisper"
 INFO_PLIST = File.join(REPO_ROOT, "Info.plist")
@@ -56,6 +57,61 @@ def app_version
   match = info_plist.match(%r{<key>CFBundleShortVersionString</key>\s*<string>([^<]+)</string>})
   UI.user_error!("Could not read CFBundleShortVersionString from #{INFO_PLIST}") unless match
   match[1]
+end
+
+def app_build_number
+  info_plist = File.read(INFO_PLIST)
+  match = info_plist.match(%r{<key>CFBundleVersion</key>\s*<string>([^<]+)</string>})
+  UI.user_error!("Could not read CFBundleVersion from #{INFO_PLIST}") unless match
+  UI.user_error!("CFBundleVersion must be a numeric build number, got #{match[1]}") unless match[1].match?(/\A\d+\z/)
+  match[1]
+end
+
+def parse_numeric_version(version)
+  match = version.match(/\A(\d+)\.(\d+)(?:\.(\d+))?\z/)
+  UI.user_error!("Version must be numeric major.minor or major.minor.patch, got #{version}") unless match
+
+  [match[1].to_i, match[2].to_i, match[3].to_s.empty? ? 0 : match[3].to_i]
+end
+
+def next_app_version(current_version, bump)
+  major, minor, patch = parse_numeric_version(current_version)
+
+  case bump
+  when "major"
+    "#{major + 1}.0.0"
+  when "minor"
+    "#{major}.#{minor + 1}.0"
+  when "patch"
+    "#{major}.#{minor}.#{patch + 1}"
+  else
+    UI.user_error!("Unsupported version bump #{bump}. Use major, minor, or patch.")
+  end
+end
+
+def replace_plist_string(content, key, value)
+  pattern = %r{(<key>#{Regexp.escape(key)}</key>\s*<string>)([^<]*)(</string>)}
+  UI.user_error!("Could not find #{key} in #{INFO_PLIST}") unless content.match?(pattern)
+
+  content.gsub(pattern) { "#{Regexp.last_match(1)}#{value}#{Regexp.last_match(3)}" }
+end
+
+def set_app_version!(version, build_number)
+  UI.user_error!("Version must be numeric major.minor or major.minor.patch, got #{version}") unless version.match?(/\A\d+\.\d+(?:\.\d+)?\z/)
+  UI.user_error!("Build number must be numeric, got #{build_number}") unless build_number.to_s.match?(/\A\d+\z/)
+
+  info_plist = File.read(INFO_PLIST)
+  info_plist = replace_plist_string(info_plist, "CFBundleShortVersionString", version)
+  info_plist = replace_plist_string(info_plist, "CFBundleVersion", build_number)
+  File.write(INFO_PLIST, info_plist)
+
+  project = File.read(PROJECT_FILE)
+  UI.user_error!("Could not find MARKETING_VERSION in #{PROJECT_FILE}") unless project.match?(/MARKETING_VERSION = [^;]+;/)
+  UI.user_error!("Could not find CURRENT_PROJECT_VERSION in #{PROJECT_FILE}") unless project.match?(/CURRENT_PROJECT_VERSION = [^;]+;/)
+
+  project = project.gsub(/MARKETING_VERSION = [^;]+;/, "MARKETING_VERSION = #{version};")
+  project = project.gsub(/CURRENT_PROJECT_VERSION = [^;]+;/, "CURRENT_PROJECT_VERSION = #{build_number};")
+  File.write(PROJECT_FILE, project)
 end
 
 def safe_filename(value)
@@ -316,6 +372,23 @@ def validate_signing_identity!(identity)
 end
 
 platform :mac do
+  desc "Bump the app marketing version and build number"
+  lane :bump_version do |options|
+    bump = options[:bump].to_s.strip
+    bump = "patch" if bump.empty?
+
+    current_version = app_version
+    current_build = app_build_number
+    new_version = options[:version].to_s.strip
+    new_version = next_app_version(current_version, bump) if new_version.empty?
+
+    new_build = options[:build].to_s.strip
+    new_build = (current_build.to_i + 1).to_s if new_build.empty?
+
+    set_app_version!(new_version, new_build)
+    UI.success("Bumped #{APP_NAME} from #{current_version} (#{current_build}) to #{new_version} (#{new_build}).")
+  end
+
   desc "Build a signed, notarized DMG and upload it to GitHub Releases"
   lane :release do |options|
     tag_name = release_tag(options)
@@ -356,6 +429,30 @@ platform :mac do
     verify_dmg(dmg_path: dmg_path)
 
     UI.success("Built #{dmg_path}")
+  end
+
+  desc "Upload an already-built signed and notarized DMG to GitHub Releases"
+  lane :publish_dmg do |options|
+    tag_name = release_tag(options)
+    dmg_path = options[:dmg_path].to_s.strip
+    UI.user_error!("Missing required option: dmg_path") if dmg_path.empty?
+
+    dmg_path = File.expand_path(dmg_path, REPO_ROOT)
+    UI.user_error!("DMG does not exist: #{dmg_path}") unless File.exist?(dmg_path)
+
+    ensure_clean_git_tree!
+    validate_github_token!
+    ensure_head_commit_exists_on_github!
+    verify_dmg(dmg_path: dmg_path)
+
+    ensure_release_tag!(tag_name)
+    push_release_tag!(tag_name)
+
+    upload_to_github_release(
+      dmg_path: dmg_path,
+      tag_name: tag_name,
+      release_notes: options[:release_notes]
+    )
   end
 
   private_lane :setup_signing do
