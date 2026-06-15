@@ -260,19 +260,36 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     }
 
     private static func requestMicrophoneAccess() async -> Bool {
+        if #available(macOS 14.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                return true
+            case .undetermined:
+                return await withCheckedContinuation { continuation in
+                    AVAudioApplication.requestRecordPermission { granted in
+                        continuation.resume(returning: granted)
+                    }
+                }
+            case .denied:
+                return false
+            @unknown default:
+                return false
+            }
+        }
+
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
-            true
+            return true
         case .notDetermined:
-            await withCheckedContinuation { continuation in
+            return await withCheckedContinuation { continuation in
                 AVCaptureDevice.requestAccess(for: .audio) { granted in
                     continuation.resume(returning: granted)
                 }
             }
         case .denied, .restricted:
-            false
+            return false
         @unknown default:
-            false
+            return false
         }
     }
 
