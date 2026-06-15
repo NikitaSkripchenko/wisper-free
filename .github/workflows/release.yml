@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump to apply before releasing
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, notarize, and publish
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):'))
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      BUNDLE_PATH: vendor/bundle
+      BUMP_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.bump || 'patch' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Validate release secrets
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          missing=()
+          for name in APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD DEVELOPER_ID_APPLICATION MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required repository secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Configure release git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump app version
+        id: bump
+        run: |
+          if [ "$BUMP_KIND" = "none" ]; then
+            CHANGED=false
+          else
+            bundle exec fastlane mac bump_version bump:"$BUMP_KIND"
+            CHANGED=true
+          fi
+
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Info.plist)
+          BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Info.plist)
+          TAG="v$VERSION"
+
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "dmg_path=build/dmg/Wisper-$TAG.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed and notarized DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          KEYCHAIN_NAME: wisper-ci.keychain
+        run: bundle exec fastlane mac build_dmg tag:"${{ steps.bump.outputs.tag }}"
+
+      - name: Commit version bump
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git add Info.plist Wisper.xcodeproj/project.pbxproj
+          git commit -m "chore(release): ${{ steps.bump.outputs.tag }}"
+          git push origin HEAD:main
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bundle exec fastlane mac publish_dmg tag:"${{ steps.bump.outputs.tag }}" dmg_path:"${{ steps.bump.outputs.dmg_path }}"
