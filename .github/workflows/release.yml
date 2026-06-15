@@ -31,7 +31,6 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     env:
-      BUNDLE_PATH: vendor/bundle
       BUMP_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.bump || 'patch' }}
 
     steps:
@@ -44,6 +43,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
+          ruby-version: '3.3'
           bundler-cache: true
 
       - name: Validate release secrets
@@ -84,12 +84,9 @@ jobs:
           fi
 
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Info.plist)
-          BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Info.plist)
           TAG="v$VERSION"
 
           echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "dmg_path=build/dmg/Wisper-$TAG.dmg" >> "$GITHUB_OUTPUT"
 
