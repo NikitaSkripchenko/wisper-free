@@ -18,7 +18,6 @@
 		8408C3C22FDC20670079C698 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B22FDC20670079C698 /* ContentView.swift */; };
 		8408C3C32FDC20670079C698 /* OpenAITranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B52FDC20670079C698 /* OpenAITranscriptionService.swift */; };
 		8408C3C42FDC20670079C698 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8408C3AF2FDC20670079C698 /* Assets.xcassets */; };
-		8408C3C52FDC20670079C698 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8408C3B32FDC20670079C698 /* Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +34,7 @@
 		8408C3B72FDC20670079C698 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		8408C3B82FDC20670079C698 /* ShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutManager.swift; sourceTree = "<group>"; };
 		8408C3B92FDC20670079C698 /* WisperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WisperApp.swift; sourceTree = "<group>"; };
+		8408C3C62FDC20670079C698 /* Wisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Wisper.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +64,7 @@
 				8408C3B72FDC20670079C698 /* RecordingController.swift */,
 				8408C3B82FDC20670079C698 /* ShortcutManager.swift */,
 				8408C3B92FDC20670079C698 /* WisperApp.swift */,
+				8408C3C62FDC20670079C698 /* Wisper.entitlements */,
 			);
 			sourceTree = "<group>";
 		};
@@ -134,7 +135,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				8408C3C42FDC20670079C698 /* Assets.xcassets in Resources */,
-				8408C3C52FDC20670079C698 /* Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -281,6 +281,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Wisper.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -306,6 +307,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Wisper.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
