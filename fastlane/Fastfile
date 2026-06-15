@@ -509,7 +509,8 @@ platform :mac do
       " -destination #{'generic/platform=macOS'.shellescape}" \
       " -archivePath #{archive_path.shellescape}" \
       " DEVELOPMENT_TEAM=#{team_id.shellescape}" \
-      " CODE_SIGN_STYLE=Automatic" \
+      " CODE_SIGN_STYLE=Manual" \
+      " CODE_SIGN_IDENTITY=#{identity.shellescape}" \
       " OTHER_CODE_SIGN_FLAGS=#{'--timestamp'.shellescape}"
     )
 
