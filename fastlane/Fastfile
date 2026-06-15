@@ -154,12 +154,12 @@ def remote_tag_commit(tag_name)
 end
 
 def ensure_clean_git_tree!
-  status = run_git!("status", "--porcelain")
+  status = run_git!("status", "--porcelain", "--untracked-files=no")
   return if status.empty?
 
   UI.user_error!(<<~ERROR)
     Refusing to create a release from a dirty working tree.
-    Commit or stash your changes first so the git tag matches the exact source that produced the DMG.
+    Commit or stash tracked changes first so the git tag matches the exact source that produced the DMG.
   ERROR
 end
 

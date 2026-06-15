@@ -6,6 +6,7 @@ audio/*
 __pycache__/*
 DerivedData/
 build/
+.bundle/
 *.cer
 *.key
 *.keychain
