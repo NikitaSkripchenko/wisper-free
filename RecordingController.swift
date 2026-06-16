@@ -32,6 +32,14 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     private var discardWhenFinished = false
     private var stopContinuation: CheckedContinuation<URL?, Error>?
 
+    nonisolated static let supportedAudioFileExtensions = [
+        "m4a", "mp3", "wav", "mp4", "mpeg", "mpga", "flac", "ogg", "oga", "webm", "aac", "aiff", "aif"
+    ]
+
+    nonisolated static var supportedAudioFileTypesDescription: String {
+        supportedAudioFileExtensions.joined(separator: ", ")
+    }
+
     var isRecording: Bool {
         phase == .recording || phase == .paused
     }
@@ -168,6 +176,49 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         try await start(audioSourceID: audioSourceID)
     }
 
+    func importAudioFile(from sourceURL: URL) async throws -> (url: URL, durationSeconds: TimeInterval?) {
+        guard phase == .idle else {
+            throw RecordingError.importUnavailableWhileRecording
+        }
+
+        guard Self.isSupportedAudioFile(sourceURL) else {
+            throw RecordingError.unsupportedAudioFile
+        }
+
+        let destinationURL = try Self.makeImportedAudioURL(originalName: sourceURL.lastPathComponent)
+        let didAccess = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        try? FileManager.default.removeItem(at: destinationURL)
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+        let durationSeconds = await Self.audioDuration(of: destinationURL)
+        lastRecordingURL = destinationURL
+        lastDurationSeconds = durationSeconds ?? 0
+        elapsedSeconds = durationSeconds ?? 0
+        lastRecordingSourceName = "Uploaded file"
+        return (destinationURL, durationSeconds)
+    }
+
+    func removeImportedAudio(_ audioURL: URL) {
+        try? FileManager.default.removeItem(at: audioURL)
+
+        if lastRecordingURL == audioURL {
+            lastRecordingURL = nil
+            lastDurationSeconds = 0
+            elapsedSeconds = 0
+            lastRecordingSourceName = "Microphone"
+        }
+    }
+
+    nonisolated static func isSupportedAudioFile(_ url: URL) -> Bool {
+        supportedAudioFileExtensions.contains(url.pathExtension.lowercased())
+    }
+
     nonisolated func fileOutput(
         _ output: AVCaptureFileOutput,
         didFinishRecordingTo outputFileURL: URL,
@@ -259,7 +310,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         elapsedSeconds = max(0, endDate.timeIntervalSince(startedAt) - pausedDuration)
     }
 
-    private static func requestMicrophoneAccess() async -> Bool {
+    private nonisolated static func requestMicrophoneAccess() async -> Bool {
         if #available(macOS 14.0, *) {
             switch AVAudioApplication.shared.recordPermission {
             case .granted:
@@ -320,17 +371,55 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     }
 
     private static func makeRecordingURLs() throws -> (movie: URL, audio: URL) {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "Wisper/Recordings", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-        let filename = "Recording-\(formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-"))"
+        let directory = try recordingsDirectory()
+        let filename = "Recording-\(timestampForFilename())"
         return (
             movie: directory.appending(path: "\(filename)-capture").appendingPathExtension("mov"),
             audio: directory.appending(path: filename).appendingPathExtension("m4a")
         )
+    }
+
+    private static func makeImportedAudioURL(originalName: String) throws -> URL {
+        let directory = try recordingsDirectory()
+        let originalURL = URL(filePath: originalName)
+        let fileExtension = originalURL.pathExtension.lowercased()
+        let stem = sanitizedFileStem(originalURL.deletingPathExtension().lastPathComponent)
+        let filename = "Upload-\(timestampForFilename())-\(stem)"
+        return directory.appending(path: filename).appendingPathExtension(fileExtension)
+    }
+
+    private static func recordingsDirectory() throws -> URL {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: "Wisper/Recordings", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func timestampForFilename() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        return formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+    }
+
+    private static func sanitizedFileStem(_ value: String) -> String {
+        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
+        let sanitized = value.unicodeScalars.map { scalar in
+            allowedCharacters.contains(scalar) ? String(scalar) : "-"
+        }
+        .joined()
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        return sanitized.isEmpty ? "Audio" : String(sanitized.prefix(80))
+    }
+
+    private static func audioDuration(of audioURL: URL) async -> TimeInterval? {
+        let asset = AVURLAsset(url: audioURL)
+        guard let seconds = try? await asset.load(.duration).seconds,
+              seconds.isFinite,
+              seconds > 0 else {
+            return nil
+        }
+
+        return seconds
     }
 
     private static func exportAudio(from sourceURL: URL, to outputURL: URL) async throws {
@@ -364,6 +453,8 @@ enum RecordingError: LocalizedError {
     case captureUnavailable
     case exportUnavailable
     case exportFailed
+    case importUnavailableWhileRecording
+    case unsupportedAudioFile
 
     var errorDescription: String? {
         switch self {
@@ -377,6 +468,10 @@ enum RecordingError: LocalizedError {
             "macOS could not prepare the recording for transcription."
         case .exportFailed:
             "Audio export failed. Try recording again."
+        case .importUnavailableWhileRecording:
+            "Stop the current recording before uploading an audio file."
+        case .unsupportedAudioFile:
+            "Drop a supported audio file: \(RecordingController.supportedAudioFileTypesDescription)."
         }
     }
 }
