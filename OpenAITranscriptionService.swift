@@ -52,7 +52,7 @@ struct OpenAITranscriptionService {
                     await progress?(.transcriptionStart(label: label))
                     let text = try await transcribeSingleFile(audioURL: chunkURL, apiKey: apiKey)
                     await progress?(.transcriptionComplete(label: label))
-                    stitchedText += "\n\n[\(chunkURL.lastPathComponent)]\n\n\(text)\n"
+                    stitchedText += "\n\n\(text)\n"
                     await progress?(.chunkComplete(current: index + 1, total: chunks.count))
                 }
 
@@ -110,10 +110,20 @@ struct OpenAITranscriptionService {
         switch url.pathExtension.lowercased() {
         case "m4a", "mp4":
             "audio/mp4"
-        case "mp3":
+        case "mp3", "mpeg", "mpga":
             "audio/mpeg"
         case "wav":
             "audio/wav"
+        case "flac":
+            "audio/flac"
+        case "ogg", "oga":
+            "audio/ogg"
+        case "webm":
+            "audio/webm"
+        case "aac":
+            "audio/aac"
+        case "aiff", "aif":
+            "audio/aiff"
         default:
             "application/octet-stream"
         }

@@ -44,127 +44,153 @@ struct ContentView: View {
 
 private struct RecordView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var isFileDropTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            HeaderView(
-                eyebrow: "Native macOS transcription",
-                title: "Record clean audio, then transcribe it.",
-                subtitle: "Wisper uses SwiftUI, system controls, Keychain, and the macOS microphone stack."
-            )
+        ZStack {
+            VStack(alignment: .leading, spacing: 28) {
+                HeaderView(
+                    eyebrow: "Native macOS transcription",
+                    title: "Record clean audio, then transcribe it.",
+                    subtitle: "Wisper uses SwiftUI, system controls, Keychain, and the macOS microphone stack."
+                )
 
-            VStack(spacing: 18) {
-                Image(systemName: recordIconName)
-                    .font(.system(size: 72, weight: .regular))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(recordIconColor)
+                VStack(spacing: 18) {
+                    Image(systemName: recordIconName)
+                        .font(.system(size: 72, weight: .regular))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(recordIconColor)
 
-                Text(appState.recorder.isRecording || appState.isProcessing ? appState.recorder.elapsedDisplay : "Ready")
-                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                    .monospacedDigit()
+                    Text(appState.recorder.isRecording || appState.isProcessing ? appState.recorder.elapsedDisplay : "Ready")
+                        .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                        .monospacedDigit()
 
-                Text(appState.statusMessage)
-                    .foregroundStyle(.secondary)
+                    Text(appState.statusMessage)
+                        .foregroundStyle(.secondary)
 
-                Text("Source: \(appState.activeAudioSourceName)")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
+                    Text("Source: \(appState.activeAudioSourceName)")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
 
-                HStack(spacing: 8) {
-                    Picker("Audio Source", selection: audioSourceBinding) {
-                        Text("System Default").tag("")
-                        ForEach(appState.recorder.audioSources) { source in
-                            Text(source.name).tag(source.id)
+                    HStack(spacing: 8) {
+                        Picker("Audio Source", selection: audioSourceBinding) {
+                            Text("System Default").tag("")
+                            ForEach(appState.recorder.audioSources) { source in
+                                Text(source.name).tag(source.id)
+                            }
+                            if let selectedAudioSourceID = appState.selectedAudioSourceID,
+                               appState.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
+                                Text("Unavailable Source").tag(selectedAudioSourceID)
+                            }
                         }
-                        if let selectedAudioSourceID = appState.selectedAudioSourceID,
-                           appState.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
-                            Text("Unavailable Source").tag(selectedAudioSourceID)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 320)
-                    .disabled(appState.recorder.isRecording || appState.isProcessing)
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 320)
+                        .disabled(appState.recorder.isRecording || appState.isProcessing)
 
-                    Button("Refresh") {
-                        appState.refreshAudioSources()
+                        Button("Refresh") {
+                            appState.refreshAudioSources()
+                        }
+                        .disabled(appState.recorder.isRecording || appState.isProcessing)
                     }
-                    .disabled(appState.recorder.isRecording || appState.isProcessing)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            if appState.recorder.phase == .recording || appState.recorder.phase == .paused {
+                                Task { await appState.stopRecording() }
+                            } else {
+                                Task { await appState.startRecording() }
+                            }
+                        } label: {
+                            Label(primaryRecordLabel, systemImage: appState.recorder.isRecording ? "stop.fill" : "record.circle")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(appState.isProcessing)
+
+                        Button {
+                            if appState.recorder.isPaused {
+                                appState.resumeRecording()
+                            } else {
+                                appState.pauseRecording()
+                            }
+                        } label: {
+                            Label(appState.recorder.isPaused ? "Resume" : "Pause", systemImage: appState.recorder.isPaused ? "play.fill" : "pause.fill")
+                        }
+                        .controlSize(.large)
+                        .disabled(appState.recorder.isRecording == false || appState.isProcessing)
+
+                        Button(role: .destructive) {
+                            Task { await appState.discardRecording() }
+                        } label: {
+                            Label("Discard", systemImage: "trash")
+                        }
+                        .controlSize(.large)
+                        .disabled(appState.recorder.isRecording == false || appState.isProcessing)
+
+                        Button {
+                            Task { await appState.transcribeLatestRecording() }
+                        } label: {
+                            Label("Transcribe", systemImage: "text.quote")
+                        }
+                        .controlSize(.large)
+                        .disabled(appState.recorder.isRecording || appState.recorder.lastRecordingURL == nil || appState.isProcessing)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 320)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.quaternary)
                 }
 
-                HStack(spacing: 12) {
-                    Button {
-                        if appState.recorder.phase == .recording || appState.recorder.phase == .paused {
-                            Task { await appState.stopRecording() }
-                        } else {
-                            Task { await appState.startRecording() }
-                        }
-                    } label: {
-                        Label(primaryRecordLabel, systemImage: appState.recorder.isRecording ? "stop.fill" : "record.circle")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(appState.isProcessing)
-
-                    Button {
-                        if appState.recorder.isPaused {
-                            appState.resumeRecording()
-                        } else {
-                            appState.pauseRecording()
-                        }
-                    } label: {
-                        Label(appState.recorder.isPaused ? "Resume" : "Pause", systemImage: appState.recorder.isPaused ? "play.fill" : "pause.fill")
-                    }
-                    .controlSize(.large)
-                    .disabled(appState.recorder.isRecording == false || appState.isProcessing)
-
-                    Button(role: .destructive) {
-                        Task { await appState.discardRecording() }
-                    } label: {
-                        Label("Discard", systemImage: "trash")
-                    }
-                    .controlSize(.large)
-                    .disabled(appState.recorder.isRecording == false || appState.isProcessing)
-
-                    Button {
-                        Task { await appState.transcribeLatestRecording() }
-                    } label: {
-                        Label("Transcribe", systemImage: "text.quote")
-                    }
-                    .controlSize(.large)
-                    .disabled(appState.recorder.isRecording || appState.recorder.lastRecordingURL == nil || appState.isProcessing)
+                if let recordingURL = appState.recorder.lastRecordingURL {
+                    LabeledContent("Last recording", value: recordingURL.lastPathComponent)
+                        .font(.callout)
                 }
-            }
-            .frame(maxWidth: .infinity, minHeight: 320)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(.quaternary)
-            }
 
-            if let recordingURL = appState.recorder.lastRecordingURL {
-                LabeledContent("Last recording", value: recordingURL.lastPathComponent)
-                    .font(.callout)
-            }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Latest Transcript")
+                        .font(.headline)
+                    Text(appState.latestTranscriptText)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(6)
+                        .textSelection(.enabled)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(.quaternary)
+                }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Latest Transcript")
-                    .font(.headline)
-                Text(appState.latestTranscriptText)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(6)
-                    .textSelection(.enabled)
+                Spacer()
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.quaternary)
-            }
+            .padding(32)
 
-            Spacer()
+            if isFileDropTargeted {
+                AudioFileDropOverlay(isBusy: appState.recorder.isRecording || appState.isProcessing)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    .allowsHitTesting(false)
+            } else if let pendingUploadedAudio = appState.pendingUploadedAudio {
+                AudioUploadConfirmationOverlay(
+                    upload: pendingUploadedAudio,
+                    onConfirm: { Task { await appState.transcribePendingUploadedAudio() } },
+                    onCancel: { appState.cancelPendingUploadedAudio() }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
         }
-        .padding(32)
+        .dropDestination(for: URL.self) { urls, _ in
+            let fileURLs = urls.filter(\.isFileURL)
+            guard fileURLs.isEmpty == false else { return false }
+            Task { await appState.importDroppedAudioFiles(fileURLs) }
+            return true
+        } isTargeted: { isTargeted in
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isFileDropTargeted = isTargeted
+            }
+        }
     }
 
     private var primaryRecordLabel: String {
@@ -192,6 +218,109 @@ private struct RecordView: View {
             get: { appState.selectedAudioSourceID ?? "" },
             set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
         )
+    }
+}
+
+private struct AudioUploadConfirmationOverlay: View {
+    let upload: PendingUploadedAudio
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.18))
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 58, weight: .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.blue)
+
+                VStack(spacing: 6) {
+                    Text("Transcribe this audio?")
+                        .font(.title2.weight(.semibold))
+
+                    Text(upload.originalName)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text(durationText)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Text("The file has been imported locally. Transcription will start only after you confirm.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 12) {
+                    Button("Cancel", role: .cancel, action: onCancel)
+                        .controlSize(.large)
+
+                    Button(action: onConfirm) {
+                        Label("Transcribe File", systemImage: "text.quote")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+            }
+            .padding(34)
+            .frame(maxWidth: 500)
+            .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(.blue.opacity(0.65), lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
+        }
+    }
+
+    private var durationText: String {
+        guard let durationSeconds = upload.durationSeconds else {
+            return "Duration unavailable"
+        }
+
+        let totalSeconds = Int(durationSeconds.rounded())
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+    }
+}
+
+private struct AudioFileDropOverlay: View {
+    let isBusy: Bool
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.18))
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Image(systemName: isBusy ? "hourglass" : "waveform.badge.plus")
+                    .font(.system(size: 58, weight: .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(isBusy ? .orange : .blue)
+
+                Text(isBusy ? "Wisper is busy" : "Drop audio to upload")
+                    .font(.title2.weight(.semibold))
+
+                Text(isBusy ? "Finish the current recording or transcription before uploading a file." : "Supported: \(RecordingController.supportedAudioFileTypesDescription).")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(34)
+            .frame(maxWidth: 480)
+            .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(isBusy ? .orange.opacity(0.6) : .blue.opacity(0.65), lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
+        }
     }
 }
 

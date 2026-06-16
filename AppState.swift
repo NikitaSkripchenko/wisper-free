@@ -147,6 +147,12 @@ struct Transcript: Identifiable, Codable, Equatable {
     }
 }
 
+struct PendingUploadedAudio: Equatable {
+    let originalName: String
+    let audioURL: URL
+    let durationSeconds: TimeInterval?
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var selectedSection: SidebarSection? = .record
@@ -161,6 +167,7 @@ final class AppState: ObservableObject {
     @Published var chunkingEnabled = true
     @Published var chunkSeconds = 480
     @Published var selectedAudioSourceID: String?
+    @Published var pendingUploadedAudio: PendingUploadedAudio?
 
     let recorder = RecordingController()
     let shortcutManager = ShortcutManager()
@@ -204,7 +211,8 @@ final class AppState: ObservableObject {
     }
 
     var activeAudioSourceName: String {
-        recorder.isRecording ? recorder.lastRecordingSourceName : selectedAudioSourceName
+        if pendingUploadedAudio != nil { return "Uploaded file" }
+        return recorder.isRecording ? recorder.lastRecordingSourceName : selectedAudioSourceName
     }
 
     func saveAPIKey(_ value: String) {
@@ -235,6 +243,11 @@ final class AppState: ObservableObject {
 
     func startRecording() async {
         guard isProcessing == false else { return }
+
+        guard pendingUploadedAudio == nil else {
+            errorMessage = "Transcribe or cancel the uploaded audio before recording."
+            return
+        }
 
         guard hasAPIKey else {
             selectedSection = .settings
@@ -269,6 +282,11 @@ final class AppState: ObservableObject {
     }
 
     func transcribeLatestRecording() async {
+        if pendingUploadedAudio != nil {
+            await transcribePendingUploadedAudio()
+            return
+        }
+
         guard let audioURL = recorder.lastRecordingURL else {
             errorMessage = "Record audio before transcribing."
             return
@@ -282,6 +300,70 @@ final class AppState: ObservableObject {
 
         statusMessage = "Transcribing \(audioURL.lastPathComponent)"
         await transcribeRecording(audioURL, durationSeconds: recorder.lastDurationSeconds)
+    }
+
+    func importDroppedAudioFiles(_ urls: [URL]) async {
+        guard recorder.isRecording == false else {
+            errorMessage = "Stop the current recording before uploading an audio file."
+            return
+        }
+
+        guard isProcessing == false else {
+            errorMessage = "Wait for the current transcription to finish before uploading an audio file."
+            return
+        }
+
+        guard let sourceURL = urls.first(where: { RecordingController.isSupportedAudioFile($0) }) else {
+            statusMessage = "Unsupported audio file"
+            errorMessage = "Drop a supported audio file: \(RecordingController.supportedAudioFileTypesDescription)."
+            return
+        }
+
+        do {
+            latestTranscriptText = "Importing \(sourceURL.lastPathComponent)..."
+            statusMessage = "Importing \(sourceURL.lastPathComponent)"
+            clearPendingUploadedAudio(deleteFile: true)
+            let imported = try await recorder.importAudioFile(from: sourceURL)
+            pendingUploadedAudio = PendingUploadedAudio(
+                originalName: sourceURL.lastPathComponent,
+                audioURL: imported.url,
+                durationSeconds: imported.durationSeconds
+            )
+            latestTranscriptText = "Audio uploaded. Confirm when you are ready to transcribe."
+            statusMessage = "Ready to transcribe \(sourceURL.lastPathComponent)"
+        } catch {
+            errorMessage = error.localizedDescription
+            latestTranscriptText = error.localizedDescription
+            statusMessage = "Upload failed"
+        }
+    }
+
+    func transcribePendingUploadedAudio() async {
+        guard let pendingUploadedAudio else {
+            errorMessage = "Drop an audio file before transcribing."
+            return
+        }
+
+        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
+            selectedSection = .settings
+            errorMessage = "Save an OpenAI API key before transcribing."
+            return
+        }
+
+        self.pendingUploadedAudio = nil
+        await transcribeRecording(
+            pendingUploadedAudio.audioURL,
+            durationSeconds: pendingUploadedAudio.durationSeconds,
+            source: "Uploaded file",
+            originalName: pendingUploadedAudio.originalName,
+            allowChunking: pendingUploadedAudio.durationSeconds != nil
+        )
+    }
+
+    func cancelPendingUploadedAudio() {
+        clearPendingUploadedAudio(deleteFile: true)
+        latestTranscriptText = "Upload cancelled."
+        statusMessage = "Ready to record"
     }
 
     func pauseRecording() {
@@ -437,7 +519,23 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func transcribeRecording(_ audioURL: URL, durationSeconds: TimeInterval?, replacing existing: Transcript? = nil) async {
+    private func clearPendingUploadedAudio(deleteFile: Bool) {
+        guard let pendingUploadedAudio else { return }
+        self.pendingUploadedAudio = nil
+
+        if deleteFile {
+            recorder.removeImportedAudio(pendingUploadedAudio.audioURL)
+        }
+    }
+
+    private func transcribeRecording(
+        _ audioURL: URL,
+        durationSeconds: TimeInterval?,
+        replacing existing: Transcript? = nil,
+        source: String? = nil,
+        originalName: String? = nil,
+        allowChunking: Bool = true
+    ) async {
         guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
             selectedSection = .settings
             errorMessage = "Save an OpenAI API key before transcribing."
@@ -454,8 +552,8 @@ final class AppState: ObservableObject {
         let pendingItem = Transcript(
             id: id,
             createdAt: startedAt,
-            source: existing?.source ?? recorder.lastRecordingSourceName,
-            originalName: existing?.originalName ?? audioURL.lastPathComponent,
+            source: source ?? existing?.source ?? recorder.lastRecordingSourceName,
+            originalName: originalName ?? existing?.originalName ?? audioURL.lastPathComponent,
             audioPath: audioURL.path,
             durationSeconds: durationSeconds,
             status: .processing,
@@ -466,7 +564,7 @@ final class AppState: ObservableObject {
         upsertHistoryItem(pendingItem)
 
         do {
-            let chunkLength = chunkingEnabled ? chunkSeconds : nil
+            let chunkLength = chunkingEnabled && allowChunking ? chunkSeconds : nil
             let result = try await transcriptionService.transcribe(
                 audioURL: audioURL,
                 apiKey: apiKey,
