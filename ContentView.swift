@@ -68,12 +68,21 @@ private struct RecordView: View {
                     Text(appState.statusMessage)
                         .foregroundStyle(.secondary)
 
-                    Text("Source: \(appState.activeAudioSourceName)")
+                    Text("Capture: \(appState.captureModeDescription) • Source: \(appState.activeAudioSourceName)")
                         .font(.callout)
                         .foregroundStyle(.tertiary)
 
                     HStack(spacing: 8) {
-                        Picker("Audio Source", selection: audioSourceBinding) {
+                        Picker("Capture Mode", selection: captureModeBinding) {
+                            ForEach(RecordingCaptureMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 260)
+                        .disabled(appState.recorder.isRecording || appState.isProcessing)
+
+                        Picker("Microphone", selection: audioSourceBinding) {
                             Text("System Default").tag("")
                             ForEach(appState.recorder.audioSources) { source in
                                 Text(source.name).tag(source.id)
@@ -85,7 +94,7 @@ private struct RecordView: View {
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: 320)
-                        .disabled(appState.recorder.isRecording || appState.isProcessing)
+                        .disabled(appState.captureMode.usesMicrophone == false || appState.recorder.isRecording || appState.isProcessing)
 
                         Button("Refresh") {
                             appState.refreshAudioSources()
@@ -117,7 +126,7 @@ private struct RecordView: View {
                             Label(appState.recorder.isPaused ? "Resume" : "Pause", systemImage: appState.recorder.isPaused ? "play.fill" : "pause.fill")
                         }
                         .controlSize(.large)
-                        .disabled(appState.recorder.isRecording == false || appState.isProcessing)
+                        .disabled(appState.recorder.canPause == false || appState.isProcessing)
 
                         Button(role: .destructive) {
                             Task { await appState.discardRecording() }
@@ -217,6 +226,13 @@ private struct RecordView: View {
         Binding(
             get: { appState.selectedAudioSourceID ?? "" },
             set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
+        )
+    }
+
+    private var captureModeBinding: Binding<RecordingCaptureMode> {
+        Binding(
+            get: { appState.captureMode },
+            set: { appState.saveCaptureMode($0) }
         )
     }
 }
@@ -478,8 +494,20 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Audio Source") {
-                Picker("Source", selection: audioSourceBinding) {
+            Section("Audio Capture") {
+                Picker("Capture mode", selection: captureModeBinding) {
+                    ForEach(RecordingCaptureMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(appState.recorder.isRecording || appState.isProcessing)
+
+                Text("System Audio and Microphone + System Audio capture what you hear, including headset output. These modes require macOS 15 or later in this build.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Microphone", selection: audioSourceBinding) {
                     Text("System Default").tag("")
                     ForEach(appState.recorder.audioSources) { source in
                         Text(source.name).tag(source.id)
@@ -490,7 +518,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .disabled(appState.recorder.isRecording || appState.isProcessing)
+                .disabled(appState.captureMode.usesMicrophone == false || appState.recorder.isRecording || appState.isProcessing)
 
                 HStack {
                     LabeledContent("Selected", value: appState.selectedAudioSourceName)
@@ -501,7 +529,18 @@ struct SettingsView: View {
                     .disabled(appState.recorder.isRecording || appState.isProcessing)
                 }
 
-                Text("Choose the input Wisper should use for new recordings. Existing recordings keep their original source.")
+                Text("Choose the microphone Wisper should use when the capture mode includes microphone audio. Existing recordings keep their original source.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Appearance") {
+                Toggle("Show in menu bar only", isOn: Binding(
+                    get: { appState.showInMenuBarOnly },
+                    set: { appState.saveShowInMenuBarOnly($0) }
+                ))
+
+                Text("When enabled, Wisper hides from the Dock and lives in the menu bar. When disabled, Wisper opens as a normal app window.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -558,6 +597,13 @@ struct SettingsView: View {
         Binding(
             get: { appState.selectedAudioSourceID ?? "" },
             set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
+        )
+    }
+
+    private var captureModeBinding: Binding<RecordingCaptureMode> {
+        Binding(
+            get: { appState.captureMode },
+            set: { appState.saveCaptureMode($0) }
         )
     }
 }
