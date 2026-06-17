@@ -39,7 +39,7 @@ private struct AppSettings: Codable {
         chunkingEnabled: true,
         chunkSeconds: 480,
         audioSourceID: nil,
-        captureMode: .microphoneAndSystemAudio,
+        captureMode: .defaultMode,
         showInMenuBarOnly: false
     )
 }
@@ -171,7 +171,7 @@ final class AppState: ObservableObject {
     @Published var chunkingEnabled = true
     @Published var chunkSeconds = 480
     @Published var selectedAudioSourceID: String?
-    @Published var captureMode: RecordingCaptureMode = .microphoneAndSystemAudio
+    @Published var captureMode: RecordingCaptureMode = .defaultMode
     @Published var showInMenuBarOnly = false
     @Published var pendingUploadedAudio: PendingUploadedAudio?
 
@@ -196,7 +196,7 @@ final class AppState: ObservableObject {
         chunkingEnabled = settings.chunkingEnabled
         chunkSeconds = settings.chunkSeconds
         selectedAudioSourceID = settings.audioSourceID
-        captureMode = settings.captureMode ?? .microphoneAndSystemAudio
+        captureMode = settings.captureMode ?? .defaultMode
         showInMenuBarOnly = settings.showInMenuBarOnly ?? false
         recorder.refreshAudioSources()
         loadHistory()

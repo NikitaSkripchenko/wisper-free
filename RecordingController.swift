@@ -8,6 +8,14 @@ enum RecordingCaptureMode: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
+    static var defaultMode: RecordingCaptureMode {
+        if #available(macOS 15.0, *) {
+            return .microphoneAndSystemAudio
+        }
+
+        return .microphone
+    }
+
     var displayName: String {
         switch self {
         case .microphone:
