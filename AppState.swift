@@ -31,12 +31,16 @@ private struct AppSettings: Codable {
     var chunkingEnabled: Bool
     var chunkSeconds: Int
     var audioSourceID: String?
+    var captureMode: RecordingCaptureMode?
+    var showInMenuBarOnly: Bool?
 
     static let `default` = AppSettings(
         shortcut: .default,
         chunkingEnabled: true,
         chunkSeconds: 480,
-        audioSourceID: nil
+        audioSourceID: nil,
+        captureMode: .defaultMode,
+        showInMenuBarOnly: false
     )
 }
 
@@ -167,6 +171,8 @@ final class AppState: ObservableObject {
     @Published var chunkingEnabled = true
     @Published var chunkSeconds = 480
     @Published var selectedAudioSourceID: String?
+    @Published var captureMode: RecordingCaptureMode = .defaultMode
+    @Published var showInMenuBarOnly = false
     @Published var pendingUploadedAudio: PendingUploadedAudio?
 
     let recorder = RecordingController()
@@ -190,6 +196,8 @@ final class AppState: ObservableObject {
         chunkingEnabled = settings.chunkingEnabled
         chunkSeconds = settings.chunkSeconds
         selectedAudioSourceID = settings.audioSourceID
+        captureMode = settings.captureMode ?? .defaultMode
+        showInMenuBarOnly = settings.showInMenuBarOnly ?? false
         recorder.refreshAudioSources()
         loadHistory()
         refreshAPIKeyStatus()
@@ -200,6 +208,10 @@ final class AppState: ObservableObject {
             }
         }
         shortcutCaptureMessage = shortcutManager.statusMessage
+        Task { @MainActor in
+            await Task.yield()
+            applyPresentationMode(showMainWindowWhenRegular: true)
+        }
     }
 
     var hasAPIKey: Bool {
@@ -210,9 +222,17 @@ final class AppState: ObservableObject {
         recorder.audioSourceName(for: selectedAudioSourceID)
     }
 
+    var captureModeDescription: String {
+        captureMode.displayName
+    }
+
     var activeAudioSourceName: String {
         if pendingUploadedAudio != nil { return "Uploaded file" }
-        return recorder.isRecording ? recorder.lastRecordingSourceName : selectedAudioSourceName
+        return recorder.isRecording ? recorder.lastRecordingSourceName : configuredAudioSourceName
+    }
+
+    var configuredAudioSourceName: String {
+        captureMode.usesMicrophone ? selectedAudioSourceName : "System output"
     }
 
     func saveAPIKey(_ value: String) {
@@ -227,7 +247,7 @@ final class AppState: ObservableObject {
             refreshAPIKeyStatus()
             statusMessage = "API key saved in Keychain"
         } catch {
-            errorMessage = error.localizedDescription
+            handleRecordingStartError(error)
         }
     }
 
@@ -256,7 +276,7 @@ final class AppState: ObservableObject {
         }
 
         do {
-            try await recorder.start(audioSourceID: selectedAudioSourceID)
+            try await recorder.start(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
             showOverlay()
@@ -392,14 +412,26 @@ final class AppState: ObservableObject {
 
     func restartRecording() async {
         do {
-            try await recorder.restart(audioSourceID: selectedAudioSourceID)
+            try await recorder.restart(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
             showOverlay()
             startOverlayTimer()
         } catch {
-            errorMessage = error.localizedDescription
+            handleRecordingStartError(error)
         }
+    }
+
+    private func handleRecordingStartError(_ error: Error) {
+        if let systemAudioError = error as? SystemAudioCaptureError,
+           systemAudioError == .screenRecordingPermissionRequired {
+            let message = systemAudioError.localizedDescription
+            latestTranscriptText = message
+            statusMessage = "Screen recording permission needed"
+            return
+        }
+
+        errorMessage = error.localizedDescription
     }
 
     func saveShortcut(_ nextShortcut: KeyboardShortcut) {
@@ -425,6 +457,47 @@ final class AppState: ObservableObject {
             statusMessage = "Audio source set to \(selectedAudioSourceName)"
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveCaptureMode(_ mode: RecordingCaptureMode) {
+        captureMode = mode
+        do {
+            try saveSettings()
+            statusMessage = "Capture mode set to \(mode.displayName)"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveShowInMenuBarOnly(_ value: Bool) {
+        guard showInMenuBarOnly != value else { return }
+
+        showInMenuBarOnly = value
+        do {
+            try saveSettings()
+            statusMessage = value ? "Wisper will stay in the menu bar" : "Wisper will show as a normal app"
+            applyPresentationMode(showMainWindowWhenRegular: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyPresentationMode(showMainWindowWhenRegular: Bool) {
+        if showInMenuBarOnly {
+            NSApp.setActivationPolicy(.accessory)
+            hideStandardWindows()
+        } else {
+            NSApp.setActivationPolicy(.regular)
+            if showMainWindowWhenRegular {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+    }
+
+    private func hideStandardWindows() {
+        for window in NSApp.windows where window is NSPanel == false {
+            window.orderOut(nil)
         }
     }
 
@@ -683,7 +756,7 @@ final class AppState: ObservableObject {
             state: isProcessing ? "Processing/transcribing" : recorder.phase.rawValue,
             detail: detail ?? statusMessage,
             elapsedText: recorder.elapsedDisplay,
-            canPause: recorder.phase == .recording && isProcessing == false,
+            canPause: recorder.phase == .recording && recorder.canPause && isProcessing == false,
             canResume: recorder.phase == .paused && isProcessing == false,
             canStop: recorder.phase == .recording || recorder.phase == .paused,
             canDiscard: recorder.phase == .recording || recorder.phase == .paused,
@@ -743,7 +816,9 @@ final class AppState: ObservableObject {
             shortcut: shortcut,
             chunkingEnabled: chunkingEnabled,
             chunkSeconds: chunkSeconds,
-            audioSourceID: selectedAudioSourceID
+            audioSourceID: selectedAudioSourceID,
+            captureMode: captureMode,
+            showInMenuBarOnly: showInMenuBarOnly
         ))
         try data.write(to: settingsURL, options: .atomic)
     }
