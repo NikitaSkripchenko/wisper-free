@@ -26,5 +26,15 @@
 	<string>Wisper needs microphone access to record audio for transcription.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/NikitaSkripchenko/wisper-free/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>9yefwlFI7Z6I2x9OsYFg6j1LEyAX22w95KlVDkh+hCU=</string>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

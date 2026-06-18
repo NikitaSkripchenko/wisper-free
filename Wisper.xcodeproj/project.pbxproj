@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A10001010000000000000001 /* Sparkle */; };
+		A10000010000000000000002 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000001 /* UpdateController.swift */; };
+		A10000010000000000000003 /* UpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000002 /* UpdateControllerTests.swift */; };
 		8408C3BA2FDC20670079C698 /* ShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B82FDC20670079C698 /* ShortcutManager.swift */; };
 		8408C3BB2FDC20670079C698 /* WisperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B92FDC20670079C698 /* WisperApp.swift */; };
 		8408C3BC2FDC20670079C698 /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B62FDC20670079C698 /* OverlayWindowController.swift */; };
@@ -21,8 +24,21 @@
 		8408C3C82FDC20670079C698 /* SystemAudioCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3C62FDC20670079C699 /* SystemAudioCaptureController.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A10000600000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B0000010000000000000060 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0B0000010000000000000040;
+			remoteInfo = Wisper;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		0B0000010000000000000010 /* Wisper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Wisper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000100000000000000001 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
+		A10000100000000000000002 /* UpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateControllerTests.swift; sourceTree = "<group>"; };
+		A10000100000000000000003 /* WisperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WisperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8408C3AE2FDC20670079C698 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		8408C3AF2FDC20670079C698 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8408C3B02FDC20670079C698 /* AudioChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChunker.swift; sourceTree = "<group>"; };
@@ -44,6 +60,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000010000000000000001 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000500000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -54,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				0B0000010000000000000032 /* Products */,
+				A10000200000000000000001 /* WisperTests */,
 				8408C3AE2FDC20670079C698 /* AppState.swift */,
 				8408C3AF2FDC20670079C698 /* Assets.xcassets */,
 				8408C3B02FDC20670079C698 /* AudioChunker.swift */,
@@ -66,6 +91,7 @@
 				8408C3B72FDC20670079C698 /* RecordingController.swift */,
 				8408C3B82FDC20670079C698 /* ShortcutManager.swift */,
 				8408C3C62FDC20670079C699 /* SystemAudioCaptureController.swift */,
+				A10000100000000000000001 /* UpdateController.swift */,
 				8408C3B92FDC20670079C698 /* WisperApp.swift */,
 				8408C3C62FDC20670079C698 /* Wisper.entitlements */,
 			);
@@ -75,8 +101,17 @@
 			isa = PBXGroup;
 			children = (
 				0B0000010000000000000010 /* Wisper.app */,
+				A10000100000000000000003 /* WisperTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A10000200000000000000001 /* WisperTests */ = {
+			isa = PBXGroup;
+			children = (
+				A10000100000000000000002 /* UpdateControllerTests.swift */,
+			);
+			path = WisperTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -95,9 +130,30 @@
 			dependencies = (
 			);
 			name = Wisper;
+			packageProductDependencies = (
+				A10001010000000000000001 /* Sparkle */,
+			);
 			productName = Wisper;
 			productReference = 0B0000010000000000000010 /* Wisper.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A10000400000000000000001 /* WisperTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000700000000000000001 /* Build configuration list for PBXNativeTarget "WisperTests" */;
+			buildPhases = (
+				A10000500000000000000001 /* Sources */,
+				A10000500000000000000002 /* Frameworks */,
+				A10000500000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A10000610000000000000001 /* PBXTargetDependency */,
+			);
+			name = WisperTests;
+			productName = WisperTests;
+			productReference = A10000100000000000000003 /* WisperTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -112,6 +168,10 @@
 					0B0000010000000000000040 = {
 						CreatedOnToolsVersion = 26.4;
 					};
+					A10000400000000000000001 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 0B0000010000000000000040;
+					};
 				};
 			};
 			buildConfigurationList = 0B0000010000000000000061 /* Build configuration list for PBXProject "Wisper" */;
@@ -123,11 +183,15 @@
 				Base,
 			);
 			mainGroup = 0B0000010000000000000030;
+			packageReferences = (
+				A10001000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = 0B0000010000000000000032 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				0B0000010000000000000040 /* Wisper */,
+				A10000400000000000000001 /* WisperTests */,
 			);
 		};
 /* End PBXProject section */
@@ -138,6 +202,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				8408C3C42FDC20670079C698 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000500000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -159,12 +230,57 @@
 				8408C3C22FDC20670079C698 /* ContentView.swift in Sources */,
 				8408C3C32FDC20670079C698 /* OpenAITranscriptionService.swift in Sources */,
 				8408C3C82FDC20670079C698 /* SystemAudioCaptureController.swift in Sources */,
+				A10000010000000000000002 /* UpdateController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000500000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000003 /* UpdateControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A10000610000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0B0000010000000000000040 /* Wisper */;
+			targetProxy = A10000600000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		A10000800000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.wisper.mac.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wisper.app/Contents/MacOS/Wisper";
+			};
+			name = Debug;
+		};
+		A10000800000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.wisper.mac.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Wisper.app/Contents/MacOS/Wisper";
+			};
+			name = Release;
+		};
 		0B0000010000000000000080 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -354,7 +470,35 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A10000700000000000000001 /* Build configuration list for PBXNativeTarget "WisperTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000800000000000000001 /* Debug */,
+				A10000800000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A10001000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10001010000000000000001 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10001000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 0B0000010000000000000060 /* Project object */;
 }
