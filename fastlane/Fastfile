@@ -1,4 +1,5 @@
 require "base64"
+require "digest"
 require "fileutils"
 require "json"
 require "net/http"
@@ -6,6 +7,8 @@ require "shellwords"
 require "time"
 require "uri"
 require "open3"
+require "rexml/document"
+require "rexml/xpath"
 
 opt_out_usage
 default_platform(:mac)
@@ -19,6 +22,9 @@ INFO_PLIST = File.join(REPO_ROOT, "Info.plist")
 BUILD_DIR = File.join(REPO_ROOT, "build")
 EXPORT_PATH = File.join(BUILD_DIR, "export")
 DMG_DIR = File.join(BUILD_DIR, "dmg")
+SOURCE_PACKAGES_DIR = File.join(BUILD_DIR, "SourcePackages")
+SPARKLE_TOOLS_DIR = File.join(SOURCE_PACKAGES_DIR, "artifacts", "sparkle", "Sparkle", "bin")
+APPCAST_PATH = File.join(DMG_DIR, "appcast.xml")
 
 def env!(name)
   value = ENV[name].to_s.strip
@@ -312,9 +318,17 @@ def create_github_release!(tag_name, notes)
       target_commitish: run_git!("rev-parse", "HEAD"),
       name: "#{APP_NAME} #{tag_name}",
       body: notes,
-      draft: false,
+      draft: true,
       prerelease: tag_name.include?("-")
     }
+  )
+end
+
+def update_github_release!(release, attributes)
+  github_request!(
+    "PATCH",
+    "repos/#{github_repository}/releases/#{release.fetch("id")}",
+    body: attributes
   )
 end
 
@@ -335,7 +349,11 @@ def upload_release_asset!(release, asset_path)
 
   request = Net::HTTP::Post.new(uri)
   request["Authorization"] = "Bearer #{env!("GITHUB_TOKEN")}"
-  request["Content-Type"] = "application/octet-stream"
+  request["Content-Type"] = case File.extname(asset_path)
+                            when ".dmg" then "application/x-apple-diskimage"
+                            when ".xml" then "application/rss+xml"
+                            else "application/octet-stream"
+                            end
   request["User-Agent"] = "wisper-fastlane-release"
   request.body = File.binread(asset_path)
 
@@ -343,6 +361,116 @@ def upload_release_asset!(release, asset_path)
   UI.user_error!("GitHub asset upload failed with #{response.code}: #{response.body}") unless response.code.to_i.between?(200, 299)
 
   UI.success("Uploaded #{asset_name} to GitHub Release #{release.fetch("html_url")}.")
+end
+
+def previous_release_tag
+  tags = run_git!("tag", "--sort=-version:refname").lines.map(&:strip)
+  tags.find { |tag| tag != "v#{app_version}" }
+end
+
+def generated_release_notes
+  previous_tag = previous_release_tag
+  range = previous_tag ? "#{previous_tag}..HEAD" : "HEAD"
+  subjects = run_git!("log", range, "--format=%s", "--no-merges").lines.map(&:strip)
+  subjects.reject! { |subject| subject.empty? || subject.start_with?("chore(release):") }
+  subjects = ["Maintenance and reliability improvements."] if subjects.empty?
+
+  (["# What's New", ""] + subjects.map { |subject| "- #{subject}" }).join("\n") + "\n"
+end
+
+def sparkle_tool!(name)
+  path = File.join(SPARKLE_TOOLS_DIR, name)
+  UI.user_error!("Missing Sparkle tool #{path}. Build with -clonedSourcePackagesDirPath #{SOURCE_PACKAGES_DIR}.") unless File.executable?(path)
+  path
+end
+
+def generate_appcast!(dmg_path:, tag_name:, release_notes: nil)
+  private_key = env!("SPARKLE_ED_PRIVATE_KEY")
+  notes = release_notes.to_s.strip
+  notes = generated_release_notes if notes.empty?
+  notes_path = File.join(DMG_DIR, "#{File.basename(dmg_path, ".dmg")}.md")
+  File.write(notes_path, notes.end_with?("\n") ? notes : "#{notes}\n")
+
+  download_prefix = "https://github.com/#{github_repository}/releases/download/#{tag_name}/"
+  command = [
+    sparkle_tool!("generate_appcast"),
+    "--ed-key-file", "-",
+    "--download-url-prefix", download_prefix,
+    "--embed-release-notes",
+    "--maximum-versions", "1",
+    "--maximum-deltas", "0",
+    "--link", "https://github.com/#{github_repository}/releases/latest",
+    "-o", APPCAST_PATH,
+    DMG_DIR
+  ]
+
+  stdout, stderr, status = Open3.capture3(*command, stdin_data: private_key)
+  UI.user_error!("Sparkle appcast generation failed:\n#{stdout}\n#{stderr}") unless status.success?
+  UI.message(stdout.strip) unless stdout.strip.empty?
+  validate_appcast!(dmg_path: dmg_path, tag_name: tag_name)
+  APPCAST_PATH
+end
+
+def validate_appcast!(dmg_path:, tag_name:)
+  UI.user_error!("Appcast was not generated at #{APPCAST_PATH}") unless File.exist?(APPCAST_PATH)
+
+  document = REXML::Document.new(File.read(APPCAST_PATH))
+  namespaces = { "sparkle" => "http://www.andymatuschak.org/xml-namespaces/sparkle" }
+  item = REXML::XPath.first(document, "/rss/channel/item")
+  UI.user_error!("Appcast does not contain an update item") unless item
+
+  version = REXML::XPath.first(item, "sparkle:version", namespaces)&.text
+  short_version = REXML::XPath.first(item, "sparkle:shortVersionString", namespaces)&.text
+  minimum_system_version = REXML::XPath.first(item, "sparkle:minimumSystemVersion", namespaces)&.text
+  enclosure = REXML::XPath.first(item, "enclosure")
+  UI.user_error!("Appcast does not contain an enclosure") unless enclosure
+
+  expected_url = "https://github.com/#{github_repository}/releases/download/#{tag_name}/#{File.basename(dmg_path)}"
+  validations = {
+    "sparkle:version" => [version, app_build_number],
+    "sparkle:shortVersionString" => [short_version, app_version],
+    "sparkle:minimumSystemVersion" => [minimum_system_version, "14.0"],
+    "enclosure URL" => [enclosure.attributes["url"], expected_url],
+    "enclosure length" => [enclosure.attributes["length"], File.size(dmg_path).to_s]
+  }
+  validations.each do |label, (actual, expected)|
+    UI.user_error!("Invalid #{label}: expected #{expected.inspect}, got #{actual.inspect}") unless actual == expected
+  end
+
+  signature = enclosure.attributes["sparkle:edSignature"]
+  UI.user_error!("Appcast enclosure is missing sparkle:edSignature") if signature.to_s.empty?
+  UI.success("Validated Sparkle appcast for #{app_version} (#{app_build_number}).")
+end
+
+def verify_uploaded_assets!(release, paths)
+  assets = github_request!("GET", "repos/#{github_repository}/releases/#{release.fetch("id")}/assets")
+  paths.each do |path|
+    asset = assets.find { |candidate| candidate.fetch("name") == File.basename(path) }
+    UI.user_error!("Draft release is missing #{File.basename(path)}") unless asset
+    UI.user_error!("Uploaded size mismatch for #{File.basename(path)}") unless asset.fetch("size") == File.size(path)
+  end
+end
+
+def verify_published_appcast!
+  published_path = File.join(DMG_DIR, "published-appcast.xml")
+  feed_url = "https://github.com/#{github_repository}/releases/latest/download/appcast.xml"
+
+  max_attempts = 12
+  max_attempts.times do |attempt|
+    _stdout, stderr, status = Open3.capture3(
+      "curl", "--fail", "--location", "--silent", "--show-error",
+      "--output", published_path, feed_url
+    )
+    if status.success? && Digest::SHA256.file(published_path) == Digest::SHA256.file(APPCAST_PATH)
+      UI.success("Verified published Sparkle appcast.")
+      return
+    end
+
+    UI.message("Waiting for GitHub release propagation (attempt #{attempt + 1}/#{max_attempts}): #{stderr.strip}")
+    sleep(5)
+  end
+
+  UI.user_error!("Published appcast did not match the generated appcast after retrying")
 end
 
 def validate_signing_identity!(identity)
@@ -404,12 +532,18 @@ platform :mac do
     sign_dmg(dmg_path: dmg_path)
     notarize_dmg(dmg_path: dmg_path)
     verify_dmg(dmg_path: dmg_path)
+    appcast_path = generate_appcast!(
+      dmg_path: dmg_path,
+      tag_name: tag_name,
+      release_notes: options[:release_notes]
+    )
 
     ensure_release_tag!(tag_name)
     push_release_tag!(tag_name)
 
     upload_to_github_release(
       dmg_path: dmg_path,
+      appcast_path: appcast_path,
       tag_name: tag_name,
       release_notes: options[:release_notes]
     )
@@ -444,12 +578,18 @@ platform :mac do
     validate_github_token!
     ensure_head_commit_exists_on_github!
     verify_dmg(dmg_path: dmg_path)
+    appcast_path = generate_appcast!(
+      dmg_path: dmg_path,
+      tag_name: tag_name,
+      release_notes: options[:release_notes]
+    )
 
     ensure_release_tag!(tag_name)
     push_release_tag!(tag_name)
 
     upload_to_github_release(
       dmg_path: dmg_path,
+      appcast_path: appcast_path,
       tag_name: tag_name,
       release_notes: options[:release_notes]
     )
@@ -508,6 +648,7 @@ platform :mac do
       " -configuration Release" \
       " -destination #{'generic/platform=macOS'.shellescape}" \
       " -archivePath #{archive_path.shellescape}" \
+      " -clonedSourcePackagesDirPath #{SOURCE_PACKAGES_DIR.shellescape}" \
       " DEVELOPMENT_TEAM=#{team_id.shellescape}" \
       " CODE_SIGN_STYLE=Manual" \
       " CODE_SIGN_IDENTITY=#{identity.shellescape}" \
@@ -530,6 +671,9 @@ platform :mac do
     app_path = options[:app_path]
 
     sh("codesign --verify --deep --strict --verbose=2 #{app_path.shellescape}")
+    sparkle_framework = File.join(app_path, "Contents", "Frameworks", "Sparkle.framework")
+    UI.user_error!("Exported app is missing Sparkle.framework") unless File.exist?(sparkle_framework)
+    sh("codesign --verify --deep --strict --verbose=2 #{sparkle_framework.shellescape}")
   end
 
   private_lane :package_dmg do |options|
@@ -589,13 +733,37 @@ platform :mac do
   private_lane :upload_to_github_release do |options|
     tag_name = options[:tag_name]
     notes = options[:release_notes].to_s
-    notes = "Signed and notarized macOS DMG for #{tag_name}." if notes.empty?
+    notes = generated_release_notes if notes.empty?
     dmg_path = options[:dmg_path]
+    appcast_path = options[:appcast_path]
 
     release = github_release_for_tag(tag_name)
+    if release && release.fetch("draft") == false
+      UI.user_error!("Release #{tag_name} is already published and immutable. Publish a higher version instead.")
+    end
     release ||= create_github_release!(tag_name, notes)
 
     delete_existing_release_asset!(release, File.basename(dmg_path))
+    delete_existing_release_asset!(release, File.basename(appcast_path))
     upload_release_asset!(release, dmg_path)
+    upload_release_asset!(release, appcast_path)
+    verify_uploaded_assets!(release, [dmg_path, appcast_path])
+
+    published_release = update_github_release!(
+      release,
+      {
+        name: "#{APP_NAME} #{tag_name}",
+        body: notes,
+        draft: false,
+        prerelease: tag_name.include?("-")
+      }
+    )
+
+    begin
+      verify_published_appcast! unless tag_name.include?("-")
+    rescue StandardError
+      update_github_release!(published_release, { draft: true })
+      raise
+    end
   end
 end

@@ -3,7 +3,20 @@ import SwiftUI
 @main
 struct WisperApp: App {
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var appState = AppState()
+    @StateObject private var appState: AppState
+    @StateObject private var updateController: UpdateController
+
+    init() {
+        let appState = AppState()
+        _appState = StateObject(wrappedValue: appState)
+        _updateController = StateObject(wrappedValue: UpdateController(
+            activityPublisher: appState.$activity.eraseToAnyPublisher(),
+            initialActivity: appState.activity,
+            setAppInstallPending: { [weak appState] isPending in
+                appState?.setUpdateInstallPending(isPending)
+            }
+        ))
+    }
 
     var body: some Scene {
         WindowGroup(id: "main") {
@@ -12,6 +25,11 @@ struct WisperApp: App {
                 .frame(minWidth: 920, minHeight: 620)
         }
         .windowStyle(.titleBar)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton(updateController: updateController)
+            }
+        }
 
         MenuBarExtra(isInserted: Binding(
             get: { appState.showInMenuBarOnly },
@@ -50,6 +68,10 @@ struct WisperApp: App {
                 appState.refreshAudioSources()
             }
             .disabled(appState.recorder.isRecording || appState.isProcessing)
+
+            Divider()
+
+            CheckForUpdatesButton(updateController: updateController)
 
             Divider()
 

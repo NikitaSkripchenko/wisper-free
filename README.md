@@ -22,6 +22,7 @@ Then choose the `Wisper` scheme and press Run. The Xcode project builds a native
 The Swift app currently includes native Record, History, and Settings surfaces. It records microphone audio to local Application Support storage, saves the OpenAI API key in Keychain, sends recorded audio to `gpt-4o-transcribe`, and stores transcript history locally.
 
 Native app features now include:
+- Signed over-the-air updates through Sparkle 2.9.3, with automatic daily checks and explicit Install/Later/Skip prompts.
 - Configurable system-wide recording shortcut, defaulting to `Command Shift Space`.
 - Floating native overlay while recording, with Discard, Start Over, Pause/Resume, and Stop controls.
 - Automatic save-and-transcribe when recording stops.
@@ -43,9 +44,15 @@ Run the Xcode build check:
 xcodebuild -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destination 'platform=macOS' build
 ```
 
+Run the unit tests:
+
+```bash
+xcodebuild test -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destination 'platform=macOS' -clonedSourcePackagesDirPath build/SourcePackages
+```
+
 ## Releases
 
-Release builds are automated with GitHub Actions on every non-release commit pushed to `main`, including merged PRs. The workflow bumps the app patch version by default, builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, commits the version bump back to `main`, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
+Release builds are automated with GitHub Actions on every non-release commit pushed to `main`, including merged PRs. The workflow runs the unit tests, bumps the app patch version by default, builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, generates an EdDSA-signed Sparkle appcast, and commits the version bump back to `main`. It uploads the DMG and appcast to a draft GitHub Release, verifies both assets, then publishes the release atomically.
 
 The workflow also supports manual runs from the GitHub Actions tab. Use `patch`, `minor`, or `major` to choose the bump type, or `none` to rebuild and republish the current checked-in version after a failed release attempt.
 
@@ -59,6 +66,31 @@ Required GitHub repository secrets:
 - `MACOS_CERTIFICATE_BASE64`: Base64-encoded `.p12` Developer ID Application certificate.
 - `MACOS_CERTIFICATE_PASSWORD`: Password for the `.p12` certificate.
 - `KEYCHAIN_PASSWORD`: Temporary CI keychain password.
+- `SPARKLE_ED_PRIVATE_KEY`: Private EdDSA key exported by Sparkle's `generate_keys` tool. Store it only as an encrypted repository secret and in an encrypted offline backup.
+
+### Over-the-air updates
+
+Wisper checks the stable appcast once per day. Checks are always enabled, but automatic downloads and silent installs are disabled. Users choose Install, Later, or Skip in Sparkle's standard update window. “Check for Updates…” is also available from the application menu and menu bar extra.
+
+The stable appcast is published at:
+
+```text
+https://github.com/NikitaSkripchenko/wisper-free/releases/latest/download/appcast.xml
+```
+
+The first release containing Sparkle must still be installed manually because older versions cannot discover the appcast. Subsequent versions can update in place. If Wisper is recording, importing, stopping, restarting, discarding, or transcribing when installation is requested, relaunch waits until that work reaches a stable idle state.
+
+Published releases are immutable. A failed draft can be rebuilt with the manual `none` option, but a faulty published build must be fixed by shipping a higher `CFBundleVersion`; do not replace a live DMG or appcast under an existing version.
+
+The private update key was generated in the local Keychain under account `com.wisper.mac`. Export an encrypted backup on a trusted Mac with the `generate_keys` binary from the resolved Sparkle package:
+
+```bash
+build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys \
+  --account com.wisper.mac \
+  -x /secure/offline/location/wisper-sparkle-private-key
+```
+
+Never commit or attach that exported file to a release. If an update key or Developer ID certificate must be rotated, rotate only one of them in a given release.
 
 Local release builds are still available with Fastlane. The release lane builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
 
@@ -68,6 +100,7 @@ Required local Fastlane credentials:
 - `APPLE_APP_SPECIFIC_PASSWORD`: App-specific password for `notarytool`.
 - `DEVELOPER_ID_APPLICATION`: Full Developer ID Application identity name, for example `Developer ID Application: Your Name (TEAMID)`.
 - `GITHUB_TOKEN`: GitHub token with Contents read/write access to create tags, create releases, and upload the DMG asset. For a fine-grained token, grant this repo `Contents: Read and write`. For a classic token, use `public_repo` for a public repo or `repo` for a private repo.
+- `SPARKLE_ED_PRIVATE_KEY`: Contents of the private key exported from the `com.wisper.mac` Sparkle Keychain account.
 
 Optional local environment variable:
 - `GITHUB_REPOSITORY`: GitHub repository in `owner/repo` format. If omitted, Fastlane tries to infer it from `remote.origin.url`.
@@ -112,6 +145,6 @@ The `mac release` lane requires a clean git working tree before it builds. Commi
 
 The commit you are releasing must already exist on GitHub before running `mac release`. Fastlane uses `GITHUB_TOKEN` to publish the tag and release asset, but it does not push branch commits.
 
-If the GitHub Release already exists for the tag, Fastlane replaces the existing DMG asset with the newly built notarized DMG.
+Fastlane may resume an existing draft release for the tag. It refuses to modify a published release; publish a higher app version and build number instead.
 
 Fastlane publishes git tags through the GitHub API using `GITHUB_TOKEN`, so local SSH access to `origin` is not required.

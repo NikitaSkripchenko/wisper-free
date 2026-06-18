@@ -55,9 +55,10 @@ jobs:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           missing=()
-          for name in APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD DEVELOPER_ID_APPLICATION MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD; do
+          for name in APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD DEVELOPER_ID_APPLICATION MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD SPARKLE_ED_PRIVATE_KEY; do
             if [ -z "${!name}" ]; then
               missing+=("$name")
             fi
@@ -72,6 +73,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project Wisper.xcodeproj \
+            -scheme Wisper \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -clonedSourcePackagesDirPath build/SourcePackages
 
       - name: Bump app version
         id: bump
@@ -112,4 +122,5 @@ jobs:
       - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: bundle exec fastlane mac publish_dmg tag:"${{ steps.bump.outputs.tag }}" dmg_path:"${{ steps.bump.outputs.dmg_path }}"

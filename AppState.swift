@@ -157,6 +157,21 @@ struct PendingUploadedAudio: Equatable {
     let durationSeconds: TimeInterval?
 }
 
+enum AppActivity: Equatable {
+    case idle
+    case startingRecording
+    case recording
+    case stoppingRecording
+    case transcribing
+    case importingAudio
+    case restartingRecording
+    case discardingRecording
+
+    var blocksUpdateInstallation: Bool {
+        self != .idle
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var selectedSection: SidebarSection? = .record
@@ -174,6 +189,8 @@ final class AppState: ObservableObject {
     @Published var captureMode: RecordingCaptureMode = .defaultMode
     @Published var showInMenuBarOnly = false
     @Published var pendingUploadedAudio: PendingUploadedAudio?
+    @Published private(set) var activity: AppActivity = .idle
+    @Published private(set) var isUpdateInstallPending = false
 
     let recorder = RecordingController()
     let shortcutManager = ShortcutManager()
@@ -263,6 +280,7 @@ final class AppState: ObservableObject {
 
     func startRecording() async {
         guard isProcessing == false else { return }
+        guard canBeginNewWork() else { return }
 
         guard pendingUploadedAudio == nil else {
             errorMessage = "Transcribe or cancel the uploaded audio before recording."
@@ -275,25 +293,32 @@ final class AppState: ObservableObject {
             return
         }
 
+        activity = .startingRecording
         do {
             try await recorder.start(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
+            activity = .recording
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
             showOverlay()
             startOverlayTimer()
         } catch {
+            activity = .idle
             errorMessage = error.localizedDescription
         }
     }
 
     func stopRecording() async {
+        activity = .stoppingRecording
         do {
             if let url = try await recorder.stop() {
                 statusMessage = "Saved recording to \(url.lastPathComponent)"
                 stopOverlayTimer()
                 await transcribeRecording(url, durationSeconds: recorder.lastDurationSeconds)
+            } else {
+                activity = .idle
             }
         } catch {
+            activity = .idle
             stopOverlayTimer()
             overlayController.hide()
             errorMessage = error.localizedDescription
@@ -302,6 +327,7 @@ final class AppState: ObservableObject {
     }
 
     func transcribeLatestRecording() async {
+        guard canBeginNewWork() else { return }
         if pendingUploadedAudio != nil {
             await transcribePendingUploadedAudio()
             return
@@ -323,6 +349,7 @@ final class AppState: ObservableObject {
     }
 
     func importDroppedAudioFiles(_ urls: [URL]) async {
+        guard canBeginNewWork() else { return }
         guard recorder.isRecording == false else {
             errorMessage = "Stop the current recording before uploading an audio file."
             return
@@ -339,6 +366,8 @@ final class AppState: ObservableObject {
             return
         }
 
+        activity = .importingAudio
+        defer { activity = .idle }
         do {
             latestTranscriptText = "Importing \(sourceURL.lastPathComponent)..."
             statusMessage = "Importing \(sourceURL.lastPathComponent)"
@@ -359,6 +388,7 @@ final class AppState: ObservableObject {
     }
 
     func transcribePendingUploadedAudio() async {
+        guard canBeginNewWork() else { return }
         guard let pendingUploadedAudio else {
             errorMessage = "Drop an audio file before transcribing."
             return
@@ -399,25 +429,32 @@ final class AppState: ObservableObject {
     }
 
     func discardRecording() async {
+        activity = .discardingRecording
         do {
             try await recorder.discard()
+            activity = .idle
             latestTranscriptText = "Recording discarded."
             statusMessage = "Ready to record"
             stopOverlayTimer()
             overlayController.hide()
         } catch {
+            activity = recorder.isRecording ? .recording : .idle
             errorMessage = error.localizedDescription
         }
     }
 
     func restartRecording() async {
+        guard canBeginNewWork() else { return }
+        activity = .restartingRecording
         do {
             try await recorder.restart(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
+            activity = .recording
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
             showOverlay()
             startOverlayTimer()
         } catch {
+            activity = recorder.isRecording ? .recording : .idle
             handleRecordingStartError(error)
         }
     }
@@ -574,6 +611,7 @@ final class AppState: ObservableObject {
     }
 
     func retranscribe(_ transcript: Transcript) async {
+        guard canBeginNewWork() else { return }
         guard let url = transcript.audioURL, transcript.canUseAudio else {
             errorMessage = "Audio file is missing."
             return
@@ -609,6 +647,17 @@ final class AppState: ObservableObject {
         originalName: String? = nil,
         allowChunking: Bool = true
     ) async {
+        let continuesRecordingWorkflow = activity == .stoppingRecording
+        if continuesRecordingWorkflow == false {
+            guard activity == .idle, canBeginNewWork() else { return }
+        }
+
+        activity = .transcribing
+        defer {
+            isProcessing = false
+            activity = .idle
+        }
+
         guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
             selectedSection = .settings
             errorMessage = "Save an OpenAI API key before transcribing."
@@ -686,7 +735,21 @@ final class AppState: ObservableObject {
             hideOverlay(after: 2.4)
         }
 
-        isProcessing = false
+    }
+
+    func setUpdateInstallPending(_ isPending: Bool) {
+        isUpdateInstallPending = isPending
+        if isPending {
+            statusMessage = "Update will install when current work finishes"
+        }
+    }
+
+    private func canBeginNewWork() -> Bool {
+        guard isUpdateInstallPending == false else {
+            errorMessage = "An update is waiting to install. Finish the current work before starting something new."
+            return false
+        }
+        return true
     }
 
     private func handleTranscriptionProgress(_ progress: TranscriptionProgress) {
