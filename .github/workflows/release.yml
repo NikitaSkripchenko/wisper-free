@@ -93,7 +93,7 @@ jobs:
             CHANGED=true
           fi
 
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Info.plist)
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" macos/Info.plist)
           TAG="v$VERSION"
 
           echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
@@ -115,7 +115,7 @@ jobs:
       - name: Commit version bump
         if: steps.bump.outputs.changed == 'true'
         run: |
-          git add Info.plist Wisper.xcodeproj/project.pbxproj
+          git add macos/Info.plist Wisper.xcodeproj/project.pbxproj
           git commit -m "chore(release): ${{ steps.bump.outputs.tag }}"
           git push origin HEAD:main
 

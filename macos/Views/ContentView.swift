@@ -1,49 +1,195 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var appViewModel: AppViewModel
 
     var body: some View {
-        NavigationSplitView {
-            List(SidebarSection.allCases, selection: $appState.selectedSection) { section in
-                Label(section.rawValue, systemImage: section.systemImage)
-                    .tag(section)
-            }
-            .navigationTitle("Wisper")
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-        } detail: {
-            switch appState.selectedSection ?? .record {
-            case .record:
-                RecordView()
-            case .history:
-                HistoryView()
-            case .settings:
-                SettingsView()
+        Group {
+            if appViewModel.onboardingCompleted {
+                NavigationSplitView {
+                    List(SidebarSection.allCases, selection: $appViewModel.selectedSection) { section in
+                        Label(section.rawValue, systemImage: section.systemImage)
+                            .tag(section)
+                    }
+                    .navigationTitle("Wisper")
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+                } detail: {
+                    switch appViewModel.selectedSection ?? .record {
+                    case .record:
+                        RecordView()
+                    case .history:
+                        HistoryView()
+                    case .settings:
+                        SettingsView()
+                    }
+                }
+            } else {
+                OnboardingView()
             }
         }
         .alert("Wisper", isPresented: errorBinding) {
             Button("OK") {
-                appState.errorMessage = nil
+                appViewModel.errorMessage = nil
             }
         } message: {
-            Text(appState.errorMessage ?? "")
+            Text(appViewModel.errorMessage ?? "")
         }
     }
 
     private var errorBinding: Binding<Bool> {
         Binding(
-            get: { appState.errorMessage != nil },
+            get: { appViewModel.errorMessage != nil },
             set: { isPresented in
                 if isPresented == false {
-                    appState.errorMessage = nil
+                    appViewModel.errorMessage = nil
                 }
             }
         )
     }
 }
 
+private struct OnboardingView: View {
+    @EnvironmentObject private var appViewModel: AppViewModel
+    @State private var apiKey = ""
+
+    var body: some View {
+        Form {
+            Section {
+                HeaderView(
+                    eyebrow: "Setup",
+                    title: "Prepare Wisper to record.",
+                    subtitle: "Finish the required local permissions before your first transcription."
+                )
+                .padding(.bottom, 8)
+            }
+
+            Section("OpenAI") {
+                LabeledContent("API key", value: appViewModel.apiKeyStatus)
+
+                HStack {
+                    SecureField("sk-...", text: $apiKey)
+                        .textFieldStyle(.roundedBorder)
+
+                    Button {
+                        appViewModel.saveAPIKey(apiKey)
+                        apiKey = ""
+                    } label: {
+                        Label("Save", systemImage: "key")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            Section("Permissions") {
+                PermissionSetupRow(
+                    title: "Microphone",
+                    status: appViewModel.microphonePermissionStatus,
+                    requestTitle: "Request",
+                    onRequest: { Task { await appViewModel.requestMicrophonePermission() } },
+                    onOpenSettings: { appViewModel.openMicrophoneSettings() }
+                )
+
+                PermissionSetupRow(
+                    title: "Screen & System Audio",
+                    status: appViewModel.screenAudioPermissionStatus,
+                    requestTitle: "Request",
+                    onRequest: { appViewModel.requestScreenAudioPermission() },
+                    onOpenSettings: { appViewModel.openScreenAudioSettings() }
+                )
+            }
+
+            Section {
+                Button {
+                    appViewModel.completeOnboarding()
+                } label: {
+                    Label("Finish Setup", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(appViewModel.canCompleteOnboarding == false)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(24)
+        .navigationTitle("Onboarding")
+        .onAppear {
+            appViewModel.refreshPermissionStatuses()
+        }
+    }
+
+    private var captureModeBinding: Binding<RecordingCaptureMode> {
+        Binding(
+            get: { appViewModel.captureMode },
+            set: { appViewModel.saveCaptureMode($0) }
+        )
+    }
+}
+
+private struct PermissionSetupRow: View {
+    let title: String
+    let status: PermissionReadiness
+    let requestTitle: String
+    let onRequest: () -> Void
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                PermissionStatusBadge(status: status)
+            }
+
+            Spacer()
+
+            Button(requestTitle, action: onRequest)
+                .disabled(status == .granted || status == .unsupported)
+
+            Button("Settings", action: onOpenSettings)
+                .disabled(status == .unsupported)
+        }
+    }
+}
+
+private struct PermissionStatusBadge: View {
+    let status: PermissionReadiness
+
+    var body: some View {
+        Text(label)
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.14), in: Capsule())
+            .foregroundStyle(tint)
+    }
+
+    private var label: String {
+        switch status {
+        case .granted:
+            "Ready"
+        case .notDetermined:
+            "Needs Approval"
+        case .denied:
+            "Blocked"
+        case .unsupported:
+            "Unsupported"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .granted:
+            .green
+        case .notDetermined:
+            .orange
+        case .denied:
+            .red
+        case .unsupported:
+            .secondary
+        }
+    }
+}
+
 private struct RecordView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var appViewModel: AppViewModel
     @State private var isFileDropTargeted = false
 
     var body: some View {
@@ -61,14 +207,14 @@ private struct RecordView: View {
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(recordIconColor)
 
-                    Text(appState.recorder.isRecording || appState.isProcessing ? appState.recorder.elapsedDisplay : "Ready")
+                    Text(appViewModel.recorder.isRecording || appViewModel.isProcessing ? appViewModel.recorder.elapsedDisplay : "Ready")
                         .font(.system(.largeTitle, design: .rounded, weight: .semibold))
                         .monospacedDigit()
 
-                    Text(appState.statusMessage)
+                    Text(appViewModel.statusMessage)
                         .foregroundStyle(.secondary)
 
-                    Text("Capture: \(appState.captureModeDescription) • Source: \(appState.activeAudioSourceName)")
+                    Text("Capture: \(appViewModel.captureModeDescription) • Source: \(appViewModel.activeAudioSourceName)")
                         .font(.callout)
                         .foregroundStyle(.tertiary)
 
@@ -80,69 +226,69 @@ private struct RecordView: View {
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: 260)
-                        .disabled(appState.recorder.isRecording || appState.isProcessing)
+                        .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
 
                         Picker("Microphone", selection: audioSourceBinding) {
                             Text("System Default").tag("")
-                            ForEach(appState.recorder.audioSources) { source in
+                            ForEach(appViewModel.recorder.audioSources) { source in
                                 Text(source.name).tag(source.id)
                             }
-                            if let selectedAudioSourceID = appState.selectedAudioSourceID,
-                               appState.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
+                            if let selectedAudioSourceID = appViewModel.selectedAudioSourceID,
+                               appViewModel.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
                                 Text("Unavailable Source").tag(selectedAudioSourceID)
                             }
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: 320)
-                        .disabled(appState.captureMode.usesMicrophone == false || appState.recorder.isRecording || appState.isProcessing)
+                        .disabled(appViewModel.captureMode.usesMicrophone == false || appViewModel.recorder.isRecording || appViewModel.isProcessing)
 
                         Button("Refresh") {
-                            appState.refreshAudioSources()
+                            appViewModel.refreshAudioSources()
                         }
-                        .disabled(appState.recorder.isRecording || appState.isProcessing)
+                        .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
                     }
 
                     HStack(spacing: 12) {
                         Button {
-                            if appState.recorder.phase == .recording || appState.recorder.phase == .paused {
-                                Task { await appState.stopRecording() }
+                            if appViewModel.recorder.phase == .recording || appViewModel.recorder.phase == .paused {
+                                Task { await appViewModel.stopRecording() }
                             } else {
-                                Task { await appState.startRecording() }
+                                Task { await appViewModel.startRecording() }
                             }
                         } label: {
-                            Label(primaryRecordLabel, systemImage: appState.recorder.isRecording ? "stop.fill" : "record.circle")
+                            Label(primaryRecordLabel, systemImage: appViewModel.recorder.isRecording ? "stop.fill" : "record.circle")
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        .disabled(appState.isProcessing)
+                        .disabled(appViewModel.isProcessing)
 
                         Button {
-                            if appState.recorder.isPaused {
-                                appState.resumeRecording()
+                            if appViewModel.recorder.isPaused {
+                                appViewModel.resumeRecording()
                             } else {
-                                appState.pauseRecording()
+                                appViewModel.pauseRecording()
                             }
                         } label: {
-                            Label(appState.recorder.isPaused ? "Resume" : "Pause", systemImage: appState.recorder.isPaused ? "play.fill" : "pause.fill")
+                            Label(appViewModel.recorder.isPaused ? "Resume" : "Pause", systemImage: appViewModel.recorder.isPaused ? "play.fill" : "pause.fill")
                         }
                         .controlSize(.large)
-                        .disabled(appState.recorder.canPause == false || appState.isProcessing)
+                        .disabled(appViewModel.recorder.canPause == false || appViewModel.isProcessing)
 
                         Button(role: .destructive) {
-                            Task { await appState.discardRecording() }
+                            Task { await appViewModel.discardRecording() }
                         } label: {
                             Label("Discard", systemImage: "trash")
                         }
                         .controlSize(.large)
-                        .disabled(appState.recorder.isRecording == false || appState.isProcessing)
+                        .disabled(appViewModel.recorder.isRecording == false || appViewModel.isProcessing)
 
                         Button {
-                            Task { await appState.transcribeLatestRecording() }
+                            Task { await appViewModel.transcribeLatestRecording() }
                         } label: {
                             Label("Transcribe", systemImage: "text.quote")
                         }
                         .controlSize(.large)
-                        .disabled(appState.recorder.isRecording || appState.recorder.lastRecordingURL == nil || appState.isProcessing)
+                        .disabled(appViewModel.recorder.isRecording || appViewModel.recorder.lastRecordingURL == nil || appViewModel.isProcessing)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 320)
@@ -152,7 +298,7 @@ private struct RecordView: View {
                         .strokeBorder(.quaternary)
                 }
 
-                if let recordingURL = appState.recorder.lastRecordingURL {
+                if let recordingURL = appViewModel.recorder.lastRecordingURL {
                     LabeledContent("Last recording", value: recordingURL.lastPathComponent)
                         .font(.callout)
                 }
@@ -160,7 +306,7 @@ private struct RecordView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Latest Transcript")
                         .font(.headline)
-                    Text(appState.latestTranscriptText)
+                    Text(appViewModel.latestTranscriptText)
                         .foregroundStyle(.secondary)
                         .lineLimit(6)
                         .textSelection(.enabled)
@@ -178,14 +324,14 @@ private struct RecordView: View {
             .padding(32)
 
             if isFileDropTargeted {
-                AudioFileDropOverlay(isBusy: appState.recorder.isRecording || appState.isProcessing)
+                AudioFileDropOverlay(isBusy: appViewModel.recorder.isRecording || appViewModel.isProcessing)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     .allowsHitTesting(false)
-            } else if let pendingUploadedAudio = appState.pendingUploadedAudio {
+            } else if let pendingUploadedAudio = appViewModel.pendingUploadedAudio {
                 AudioUploadConfirmationOverlay(
                     upload: pendingUploadedAudio,
-                    onConfirm: { Task { await appState.transcribePendingUploadedAudio() } },
-                    onCancel: { appState.cancelPendingUploadedAudio() }
+                    onConfirm: { Task { await appViewModel.transcribePendingUploadedAudio() } },
+                    onCancel: { appViewModel.cancelPendingUploadedAudio() }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
@@ -193,7 +339,7 @@ private struct RecordView: View {
         .dropDestination(for: URL.self) { urls, _ in
             let fileURLs = urls.filter(\.isFileURL)
             guard fileURLs.isEmpty == false else { return false }
-            Task { await appState.importDroppedAudioFiles(fileURLs) }
+            Task { await appViewModel.importDroppedAudioFiles(fileURLs) }
             return true
         } isTargeted: { isTargeted in
             withAnimation(.easeInOut(duration: 0.16)) {
@@ -203,36 +349,36 @@ private struct RecordView: View {
     }
 
     private var primaryRecordLabel: String {
-        if appState.recorder.phase == .paused { return "Stop and Transcribe" }
-        if appState.recorder.phase == .recording { return "Stop and Transcribe" }
+        if appViewModel.recorder.phase == .paused { return "Stop and Transcribe" }
+        if appViewModel.recorder.phase == .recording { return "Stop and Transcribe" }
         return "Start Recording"
     }
 
     private var recordIconName: String {
-        if appState.isProcessing { return "waveform.badge.magnifyingglass" }
-        if appState.recorder.isPaused { return "pause.circle.fill" }
-        if appState.recorder.isRecording { return "waveform.circle.fill" }
+        if appViewModel.isProcessing { return "waveform.badge.magnifyingglass" }
+        if appViewModel.recorder.isPaused { return "pause.circle.fill" }
+        if appViewModel.recorder.isRecording { return "waveform.circle.fill" }
         return "mic.circle"
     }
 
     private var recordIconColor: Color {
-        if appState.isProcessing { return .blue }
-        if appState.recorder.isPaused { return .orange }
-        if appState.recorder.isRecording { return .red }
+        if appViewModel.isProcessing { return .blue }
+        if appViewModel.recorder.isPaused { return .orange }
+        if appViewModel.recorder.isRecording { return .red }
         return .blue
     }
 
     private var audioSourceBinding: Binding<String> {
         Binding(
-            get: { appState.selectedAudioSourceID ?? "" },
-            set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
+            get: { appViewModel.selectedAudioSourceID ?? "" },
+            set: { appViewModel.saveAudioSource($0.isEmpty ? nil : $0) }
         )
     }
 
     private var captureModeBinding: Binding<RecordingCaptureMode> {
         Binding(
-            get: { appState.captureMode },
-            set: { appState.saveCaptureMode($0) }
+            get: { appViewModel.captureMode },
+            set: { appViewModel.saveCaptureMode($0) }
         )
     }
 }
@@ -341,7 +487,7 @@ private struct AudioFileDropOverlay: View {
 }
 
 private struct HistoryView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var appViewModel: AppViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -351,7 +497,7 @@ private struct HistoryView: View {
                 subtitle: "Completed transcripts are stored in Application Support and listed with native rows."
             )
 
-            if appState.history.isEmpty {
+            if appViewModel.history.isEmpty {
                 ContentUnavailableView(
                     "No Transcripts Yet",
                     systemImage: "doc.text.magnifyingglass",
@@ -359,7 +505,7 @@ private struct HistoryView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(appState.history) { transcript in
+                List(appViewModel.history) { transcript in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(transcript.title)
@@ -382,25 +528,25 @@ private struct HistoryView: View {
 
                             Spacer()
 
-                            Button(appState.audioPlayer.playingURL == transcript.audioURL ? "Stop" : "Play") {
-                                appState.playAudio(transcript)
+                            Button(appViewModel.audioPlayer.playingURL == transcript.audioURL ? "Stop" : "Play") {
+                                appViewModel.playAudio(transcript)
                             }
                             .disabled(transcript.canUseAudio == false)
 
                             Menu("Actions") {
-                                Button("Reveal Audio in Finder") { appState.revealAudio(transcript) }
+                                Button("Reveal Audio in Finder") { appViewModel.revealAudio(transcript) }
                                     .disabled(transcript.canUseAudio == false)
-                                Button("Copy Transcript") { appState.copyTranscript(transcript) }
+                                Button("Copy Transcript") { appViewModel.copyTranscript(transcript) }
                                     .disabled(transcript.transcriptionText.isEmpty)
-                                Button("Save Transcript...") { appState.exportTranscript(transcript) }
+                                Button("Save Transcript...") { appViewModel.exportTranscript(transcript) }
                                     .disabled(transcript.transcriptionText.isEmpty)
                                 Button("Retranscribe") {
-                                    Task { await appState.retranscribe(transcript) }
+                                    Task { await appViewModel.retranscribe(transcript) }
                                 }
-                                .disabled(transcript.canUseAudio == false || appState.isProcessing)
+                                .disabled(transcript.canUseAudio == false || appViewModel.isProcessing)
                                 Divider()
                                 Button("Remove from History", role: .destructive) {
-                                    appState.removeFromHistory(transcript)
+                                    appViewModel.removeFromHistory(transcript)
                                 }
                             }
                         }
@@ -469,28 +615,28 @@ private struct StatusPill: View {
 }
 
 struct SettingsView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var appViewModel: AppViewModel
     @State private var apiKey = ""
 
     var body: some View {
         Form {
             Section("OpenAI") {
-                LabeledContent("API key", value: appState.apiKeyStatus)
+                LabeledContent("API key", value: appViewModel.apiKeyStatus)
 
                 SecureField("sk-...", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
 
                 HStack {
                     Button("Save Key") {
-                        appState.saveAPIKey(apiKey)
+                        appViewModel.saveAPIKey(apiKey)
                         apiKey = ""
                     }
                     .buttonStyle(.borderedProminent)
 
                     Button("Delete Key", role: .destructive) {
-                        appState.deleteAPIKey()
+                        appViewModel.deleteAPIKey()
                     }
-                    .disabled(appState.hasAPIKey == false)
+                    .disabled(appViewModel.hasAPIKey == false)
                 }
             }
 
@@ -501,7 +647,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .disabled(appState.recorder.isRecording || appState.isProcessing)
+                .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
 
                 Text("System Audio and Microphone + System Audio capture what you hear, including headset output. These modes require macOS 15 or later in this build.")
                     .font(.caption)
@@ -509,24 +655,24 @@ struct SettingsView: View {
 
                 Picker("Microphone", selection: audioSourceBinding) {
                     Text("System Default").tag("")
-                    ForEach(appState.recorder.audioSources) { source in
+                    ForEach(appViewModel.recorder.audioSources) { source in
                         Text(source.name).tag(source.id)
                     }
-                    if let selectedAudioSourceID = appState.selectedAudioSourceID,
-                       appState.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
+                    if let selectedAudioSourceID = appViewModel.selectedAudioSourceID,
+                       appViewModel.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
                         Text("Unavailable Source").tag(selectedAudioSourceID)
                     }
                 }
                 .pickerStyle(.menu)
-                .disabled(appState.captureMode.usesMicrophone == false || appState.recorder.isRecording || appState.isProcessing)
+                .disabled(appViewModel.captureMode.usesMicrophone == false || appViewModel.recorder.isRecording || appViewModel.isProcessing)
 
                 HStack {
-                    LabeledContent("Selected", value: appState.selectedAudioSourceName)
+                    LabeledContent("Selected", value: appViewModel.selectedAudioSourceName)
                     Spacer()
                     Button("Refresh") {
-                        appState.refreshAudioSources()
+                        appViewModel.refreshAudioSources()
                     }
-                    .disabled(appState.recorder.isRecording || appState.isProcessing)
+                    .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
                 }
 
                 Text("Choose the microphone Wisper should use when the capture mode includes microphone audio. Existing recordings keep their original source.")
@@ -534,10 +680,28 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Permissions") {
+                PermissionSetupRow(
+                    title: "Microphone",
+                    status: appViewModel.microphonePermissionStatus,
+                    requestTitle: "Request",
+                    onRequest: { Task { await appViewModel.requestMicrophonePermission() } },
+                    onOpenSettings: { appViewModel.openMicrophoneSettings() }
+                )
+
+                PermissionSetupRow(
+                    title: "Screen & System Audio",
+                    status: appViewModel.screenAudioPermissionStatus,
+                    requestTitle: "Request",
+                    onRequest: { appViewModel.requestScreenAudioPermission() },
+                    onOpenSettings: { appViewModel.openScreenAudioSettings() }
+                )
+            }
+
             Section("Appearance") {
                 Toggle("Show in menu bar only", isOn: Binding(
-                    get: { appState.showInMenuBarOnly },
-                    set: { appState.saveShowInMenuBarOnly($0) }
+                    get: { appViewModel.showInMenuBarOnly },
+                    set: { appViewModel.saveShowInMenuBarOnly($0) }
                 ))
 
                 Text("When enabled, Wisper hides from the Dock and lives in the menu bar. When disabled, Wisper opens as a normal app window.")
@@ -546,37 +710,37 @@ struct SettingsView: View {
             }
 
             Section("Global Shortcut") {
-                LabeledContent("Current", value: appState.shortcut.displayText)
+                LabeledContent("Current", value: appViewModel.shortcut.displayText)
 
-                ShortcutCaptureField(shortcut: $appState.shortcut) { shortcut in
-                    appState.saveShortcut(shortcut)
+                ShortcutCaptureField(shortcut: $appViewModel.shortcut) { shortcut in
+                    appViewModel.saveShortcut(shortcut)
                 } onInvalid: {
-                    appState.shortcutCaptureMessage = "Press at least one modifier plus a key."
+                    appViewModel.shortcutCaptureMessage = "Press at least one modifier plus a key."
                 }
                 .frame(height: 28)
 
-                Text(appState.shortcutCaptureMessage)
+                Text(appViewModel.shortcutCaptureMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 Button("Reset to Command Shift Space") {
-                    appState.saveShortcut(.default)
+                    appViewModel.saveShortcut(.default)
                 }
             }
 
             Section("Chunking") {
                 Toggle("Chunk long recordings", isOn: Binding(
-                    get: { appState.chunkingEnabled },
-                    set: { appState.saveChunkingSettings(enabled: $0) }
+                    get: { appViewModel.chunkingEnabled },
+                    set: { appViewModel.saveChunkingSettings(enabled: $0) }
                 ))
 
                 Stepper(value: Binding(
-                    get: { appState.chunkSeconds },
-                    set: { appState.saveChunkingSettings(seconds: $0) }
+                    get: { appViewModel.chunkSeconds },
+                    set: { appViewModel.saveChunkingSettings(seconds: $0) }
                 ), in: 60...3_600, step: 60) {
-                    LabeledContent("Chunk length", value: "\(appState.chunkSeconds) seconds")
+                    LabeledContent("Chunk length", value: "\(appViewModel.chunkSeconds) seconds")
                 }
-                .disabled(appState.chunkingEnabled == false)
+                .disabled(appViewModel.chunkingEnabled == false)
 
                 Text("When a recording is longer than this, Wisper splits it into local .m4a chunks, transcribes each chunk, then stitches the transcript.")
                     .font(.caption)
@@ -587,23 +751,36 @@ struct SettingsView: View {
                 Text("Wisper stores the API key in Keychain. Recordings and transcript history are stored locally under Application Support.")
                     .foregroundStyle(.secondary)
             }
+
+            Section("Diagnostics") {
+                LabeledContent("Local log", value: appViewModel.localLogFileURL.path)
+
+                Button {
+                    appViewModel.revealLocalLogFile()
+                } label: {
+                    Label("Reveal Log File", systemImage: "doc.text.magnifyingglass")
+                }
+            }
         }
         .formStyle(.grouped)
         .padding(24)
         .navigationTitle("Settings")
+        .onAppear {
+            appViewModel.refreshPermissionStatuses()
+        }
     }
 
     private var audioSourceBinding: Binding<String> {
         Binding(
-            get: { appState.selectedAudioSourceID ?? "" },
-            set: { appState.saveAudioSource($0.isEmpty ? nil : $0) }
+            get: { appViewModel.selectedAudioSourceID ?? "" },
+            set: { appViewModel.saveAudioSource($0.isEmpty ? nil : $0) }
         )
     }
 
     private var captureModeBinding: Binding<RecordingCaptureMode> {
         Binding(
-            get: { appState.captureMode },
-            set: { appState.saveCaptureMode($0) }
+            get: { appViewModel.captureMode },
+            set: { appViewModel.saveCaptureMode($0) }
         )
     }
 }

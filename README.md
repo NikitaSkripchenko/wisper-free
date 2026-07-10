@@ -2,7 +2,7 @@
 
 Native macOS transcription app.
 
-Wisper is a native macOS Swift application using SwiftUI, AppKit-era system conventions, Keychain, and the native microphone stack.
+Wisper is a native macOS Swift application using SwiftUI, AppKit-era system conventions, Keychain, the native microphone stack, and the OpenAI Swift SDK.
 
 ## Native macOS App
 
@@ -19,16 +19,26 @@ open Wisper.xcodeproj
 
 Then choose the `Wisper` scheme and press Run. The Xcode project builds a native macOS `.app` bundle and includes the microphone privacy usage description required by macOS.
 
-The Swift app currently includes native Record, History, and Settings surfaces. It records microphone audio to local Application Support storage, saves the OpenAI API key in Keychain, sends recorded audio to `gpt-4o-transcribe`, and stores transcript history locally.
+The Swift app currently includes first-run setup plus native Record, History, and Settings surfaces. It records audio to local Application Support storage, saves the OpenAI API key in Keychain, sends recorded audio to `gpt-4o-transcribe` through the Swift SDK, and stores transcript history locally.
 
 Native app features now include:
 - Signed over-the-air updates through Sparkle 2.9.3, with automatic daily checks and explicit Install/Later/Skip prompts.
 - Configurable system-wide recording shortcut, defaulting to `Command Shift Space`.
 - Floating native overlay while recording, with Discard, Start Over, Pause/Resume, and Stop controls.
 - Automatic save-and-transcribe when recording stops.
+- First-run onboarding for API key, microphone, and screen/system audio permissions.
+- Local JSONL diagnostics under Application Support, with a Settings action to reveal the log file.
 - Native chunked transcription for longer recordings, enabled by default at 480-second chunks and configurable in Settings.
 - History actions for audio playback, reveal in Finder, copy transcript, save transcript, retranscribe, and remove from history.
 - Local JSON history and settings under Application Support, with API keys kept in Keychain.
+
+Source layout:
+- `macos/TranscriptionService/`: transcription pipeline, chunking, and OpenAI SDK boundary.
+- `macos/Models/`: app models and persisted settings types.
+- `macos/ViewModels/`: observable view models, including `AppViewModel`.
+- `macos/Views/`: SwiftUI views.
+- `macos/`: native app services/controllers, assets, Info.plist, and entitlements.
+- `WisperTests/`: unit tests for update gating and long-file transcription orchestration.
 
 Native chunking notes:
 - The Swift app splits long recordings locally with AVFoundation before sending each chunk to OpenAI.
@@ -41,7 +51,7 @@ Native chunking notes:
 Run the Xcode build check:
 
 ```bash
-xcodebuild -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destination 'platform=macOS' build
+xcodebuild -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destination 'platform=macOS' -clonedSourcePackagesDirPath build/SourcePackages build
 ```
 
 Run the unit tests:
