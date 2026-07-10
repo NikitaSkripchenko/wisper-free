@@ -3,17 +3,17 @@ import SwiftUI
 @main
 struct WisperApp: App {
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var appState: AppState
+    @StateObject private var appViewModel: AppViewModel
     @StateObject private var updateController: UpdateController
 
     init() {
-        let appState = AppState()
-        _appState = StateObject(wrappedValue: appState)
+        let appViewModel = AppViewModel()
+        _appViewModel = StateObject(wrappedValue: appViewModel)
         _updateController = StateObject(wrappedValue: UpdateController(
-            activityPublisher: appState.$activity.eraseToAnyPublisher(),
-            initialActivity: appState.activity,
-            setAppInstallPending: { [weak appState] isPending in
-                appState?.setUpdateInstallPending(isPending)
+            activityPublisher: appViewModel.$activity.eraseToAnyPublisher(),
+            initialActivity: appViewModel.activity,
+            setAppInstallPending: { [weak appViewModel] isPending in
+                appViewModel?.setUpdateInstallPending(isPending)
             }
         ))
     }
@@ -21,7 +21,7 @@ struct WisperApp: App {
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
-                .environmentObject(appState)
+                .environmentObject(appViewModel)
                 .frame(minWidth: 920, minHeight: 620)
         }
         .windowStyle(.titleBar)
@@ -32,7 +32,7 @@ struct WisperApp: App {
         }
 
         MenuBarExtra(isInserted: Binding(
-            get: { appState.showInMenuBarOnly },
+            get: { appViewModel.showInMenuBarOnly },
             set: { _ in }
         )) {
             Button("Show Wisper") {
@@ -43,31 +43,31 @@ struct WisperApp: App {
 
             Button(recordingMenuTitle) {
                 Task {
-                    if appState.recorder.phase == .recording || appState.recorder.phase == .paused {
-                        await appState.stopRecording()
+                    if appViewModel.recorder.phase == .recording || appViewModel.recorder.phase == .paused {
+                        await appViewModel.stopRecording()
                     } else {
-                        await appState.startRecording()
+                        await appViewModel.startRecording()
                     }
                 }
             }
-            .disabled(appState.isProcessing)
+            .disabled(appViewModel.isProcessing)
 
-            Button(appState.recorder.isPaused ? "Resume Recording" : "Pause Recording") {
-                appState.recorder.isPaused ? appState.resumeRecording() : appState.pauseRecording()
+            Button(appViewModel.recorder.isPaused ? "Resume Recording" : "Pause Recording") {
+                appViewModel.recorder.isPaused ? appViewModel.resumeRecording() : appViewModel.pauseRecording()
             }
-            .disabled(appState.recorder.canPause == false || appState.isProcessing)
+            .disabled(appViewModel.recorder.canPause == false || appViewModel.isProcessing)
 
             Divider()
 
             Button("Settings") {
-                appState.selectedSection = .settings
+                appViewModel.selectedSection = .settings
                 showMainWindow()
             }
 
             Button("Refresh Audio Sources") {
-                appState.refreshAudioSources()
+                appViewModel.refreshAudioSources()
             }
-            .disabled(appState.recorder.isRecording || appState.isProcessing)
+            .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
 
             Divider()
 
@@ -85,13 +85,13 @@ struct WisperApp: App {
 
         Settings {
             SettingsView()
-                .environmentObject(appState)
+                .environmentObject(appViewModel)
                 .frame(width: 520)
         }
     }
 
     private var recordingMenuTitle: String {
-        if appState.recorder.phase == .recording || appState.recorder.phase == .paused {
+        if appViewModel.recorder.phase == .recording || appViewModel.recorder.phase == .paused {
             return "Stop and Transcribe"
         }
 
@@ -99,9 +99,9 @@ struct WisperApp: App {
     }
 
     private var menuIconName: String {
-        if appState.isProcessing { return "waveform.badge.magnifyingglass" }
-        if appState.recorder.isPaused { return "pause.circle.fill" }
-        if appState.recorder.isRecording { return "waveform.circle.fill" }
+        if appViewModel.isProcessing { return "waveform.badge.magnifyingglass" }
+        if appViewModel.recorder.isPaused { return "pause.circle.fill" }
+        if appViewModel.recorder.isRecording { return "waveform.circle.fill" }
         return "mic.circle"
     }
 

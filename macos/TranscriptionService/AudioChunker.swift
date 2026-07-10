@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-struct AudioChunker {
+struct AudioChunker: AudioChunking {
     func duration(of audioURL: URL) async throws -> TimeInterval {
         let asset = AVURLAsset(url: audioURL)
         let duration = try await asset.load(.duration).seconds
@@ -63,18 +63,28 @@ struct AudioChunker {
             duration: CMTime(seconds: durationSeconds, preferredTimescale: 600)
         )
 
+        let exportSessionBox = SendableExportSessionBox(exportSession)
         try await withCheckedThrowingContinuation { continuation in
-            exportSession.exportAsynchronously {
-                switch exportSession.status {
+            exportSessionBox.session.exportAsynchronously {
+                let session = exportSessionBox.session
+                switch session.status {
                 case .completed:
                     continuation.resume()
                 case .failed, .cancelled:
-                    continuation.resume(throwing: exportSession.error ?? AudioChunkingError.exportFailed)
+                    continuation.resume(throwing: session.error ?? AudioChunkingError.exportFailed)
                 default:
                     continuation.resume(throwing: AudioChunkingError.exportFailed)
                 }
             }
         }
+    }
+}
+
+final class SendableExportSessionBox: @unchecked Sendable {
+    let session: AVAssetExportSession
+
+    init(_ session: AVAssetExportSession) {
+        self.session = session
     }
 }
 

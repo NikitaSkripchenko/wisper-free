@@ -69,7 +69,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     private var systemAudioCapture: SystemAudioCapturing?
 
     nonisolated static let supportedAudioFileExtensions = [
-        "m4a", "mp3", "wav", "mp4", "mpeg", "mpga", "flac", "ogg", "oga", "webm", "aac", "aiff", "aif"
+        "m4a", "mp3", "wav", "mp4", "mpeg", "mpga", "flac", "ogg", "oga", "webm"
     ]
 
     nonisolated static var supportedAudioFileTypesDescription: String {
@@ -400,7 +400,33 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         elapsedSeconds = max(0, endDate.timeIntervalSince(startedAt) - pausedDuration)
     }
 
-    private nonisolated static func requestMicrophoneAccess() async -> Bool {
+    nonisolated static func microphonePermissionStatus() -> PermissionReadiness {
+        if #available(macOS 14.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                return .granted
+            case .undetermined:
+                return .notDetermined
+            case .denied:
+                return .denied
+            @unknown default:
+                return .denied
+            }
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return .granted
+        case .notDetermined:
+            return .notDetermined
+        case .denied, .restricted:
+            return .denied
+        @unknown default:
+            return .denied
+        }
+    }
+
+    nonisolated static func requestMicrophoneAccess() async -> Bool {
         if #available(macOS 14.0, *) {
             switch AVAudioApplication.shared.recordPermission {
             case .granted:
@@ -528,13 +554,15 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .m4a
 
+        let exportSessionBox = SendableExportSessionBox(exportSession)
         try await withCheckedThrowingContinuation { continuation in
-            exportSession.exportAsynchronously {
-                switch exportSession.status {
+            exportSessionBox.session.exportAsynchronously {
+                let session = exportSessionBox.session
+                switch session.status {
                 case .completed:
                     continuation.resume()
                 case .failed, .cancelled:
-                    continuation.resume(throwing: exportSession.error ?? RecordingError.exportFailed)
+                    continuation.resume(throwing: session.error ?? RecordingError.exportFailed)
                 default:
                     continuation.resume(throwing: RecordingError.exportFailed)
                 }

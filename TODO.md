@@ -1,0 +1,5 @@
+- [x] Move from raw OpenAI API calls to the Swift SDK.
+- [x] Restructure the project into `macos/` with a dedicated transcription service folder.
+- [x] Add local logging.
+- [x] Add tests for long videos/chunked transcription.
+- [x] Add onboarding with all permissions needed.

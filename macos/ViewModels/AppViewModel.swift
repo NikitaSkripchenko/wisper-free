@@ -1,179 +1,8 @@
 import AppKit
 import Foundation
 
-enum SidebarSection: String, CaseIterable, Identifiable {
-    case record = "Record"
-    case history = "History"
-    case settings = "Settings"
-
-    var id: String { rawValue }
-
-    var systemImage: String {
-        switch self {
-        case .record:
-            "mic.circle"
-        case .history:
-            "doc.text"
-        case .settings:
-            "gearshape"
-        }
-    }
-}
-
-enum HistoryStatus: String, Codable, Equatable {
-    case completed
-    case failed
-    case processing
-}
-
-private struct AppSettings: Codable {
-    var shortcut: KeyboardShortcut
-    var chunkingEnabled: Bool
-    var chunkSeconds: Int
-    var audioSourceID: String?
-    var captureMode: RecordingCaptureMode?
-    var showInMenuBarOnly: Bool?
-
-    static let `default` = AppSettings(
-        shortcut: .default,
-        chunkingEnabled: true,
-        chunkSeconds: 480,
-        audioSourceID: nil,
-        captureMode: .defaultMode,
-        showInMenuBarOnly: false
-    )
-}
-
-struct Transcript: Identifiable, Codable, Equatable {
-    var id: UUID
-    var createdAt: Date
-    var source: String
-    var originalName: String
-    var audioPath: String?
-    var durationSeconds: TimeInterval?
-    var status: HistoryStatus
-    var transcriptionText: String
-    var errorMessage: String?
-    var mode: String
-    var updatedAt: Date
-
-    var title: String {
-        originalName.isEmpty ? "Recording" : originalName
-    }
-
-    var text: String {
-        transcriptionText
-    }
-
-    var audioURL: URL? {
-        guard let audioPath, audioPath.isEmpty == false else { return nil }
-        return URL(filePath: audioPath)
-    }
-
-    var canUseAudio: Bool {
-        guard let audioPath else { return false }
-        return FileManager.default.fileExists(atPath: audioPath)
-    }
-
-    init(
-        id: UUID = UUID(),
-        createdAt: Date = Date(),
-        source: String = "native-mac",
-        originalName: String,
-        audioPath: String?,
-        durationSeconds: TimeInterval?,
-        status: HistoryStatus,
-        transcriptionText: String,
-        errorMessage: String? = nil,
-        mode: String = "plain",
-        updatedAt: Date = Date()
-    ) {
-        self.id = id
-        self.createdAt = createdAt
-        self.source = source
-        self.originalName = originalName
-        self.audioPath = audioPath
-        self.durationSeconds = durationSeconds
-        self.status = status
-        self.transcriptionText = transcriptionText
-        self.errorMessage = errorMessage
-        self.mode = mode
-        self.updatedAt = updatedAt
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case createdAt
-        case source
-        case originalName
-        case audioPath
-        case durationSeconds
-        case status
-        case transcriptionText
-        case text
-        case errorMessage
-        case mode
-        case updatedAt
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        createdAt = try container.decode(Date.self, forKey: .createdAt)
-        audioPath = try container.decodeIfPresent(String.self, forKey: .audioPath)
-        source = try container.decodeIfPresent(String.self, forKey: .source) ?? "native-mac"
-        originalName = try container.decodeIfPresent(String.self, forKey: .originalName)
-            ?? audioPath.map { URL(filePath: $0).lastPathComponent }
-            ?? "Recording"
-        durationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .durationSeconds)
-        status = try container.decodeIfPresent(HistoryStatus.self, forKey: .status) ?? .completed
-        transcriptionText = try container.decodeIfPresent(String.self, forKey: .transcriptionText)
-            ?? container.decodeIfPresent(String.self, forKey: .text)
-            ?? ""
-        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
-        mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "plain"
-        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(createdAt, forKey: .createdAt)
-        try container.encode(source, forKey: .source)
-        try container.encode(originalName, forKey: .originalName)
-        try container.encodeIfPresent(audioPath, forKey: .audioPath)
-        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
-        try container.encode(status, forKey: .status)
-        try container.encode(transcriptionText, forKey: .transcriptionText)
-        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
-        try container.encode(mode, forKey: .mode)
-        try container.encode(updatedAt, forKey: .updatedAt)
-    }
-}
-
-struct PendingUploadedAudio: Equatable {
-    let originalName: String
-    let audioURL: URL
-    let durationSeconds: TimeInterval?
-}
-
-enum AppActivity: Equatable {
-    case idle
-    case startingRecording
-    case recording
-    case stoppingRecording
-    case transcribing
-    case importingAudio
-    case restartingRecording
-    case discardingRecording
-
-    var blocksUpdateInstallation: Bool {
-        self != .idle
-    }
-}
-
 @MainActor
-final class AppState: ObservableObject {
+final class AppViewModel: ObservableObject {
     @Published var selectedSection: SidebarSection? = .record
     @Published var history: [Transcript] = []
     @Published var statusMessage = "Ready to record"
@@ -188,37 +17,69 @@ final class AppState: ObservableObject {
     @Published var selectedAudioSourceID: String?
     @Published var captureMode: RecordingCaptureMode = .defaultMode
     @Published var showInMenuBarOnly = false
+    @Published var onboardingCompleted = false
+    @Published private(set) var microphonePermissionStatus: PermissionReadiness = .notDetermined
+    @Published private(set) var screenAudioPermissionStatus: PermissionReadiness = .notDetermined
     @Published var pendingUploadedAudio: PendingUploadedAudio?
     @Published private(set) var activity: AppActivity = .idle
     @Published private(set) var isUpdateInstallPending = false
 
-    let recorder = RecordingController()
-    let shortcutManager = ShortcutManager()
-    let audioPlayer = AudioPlaybackController()
+    let recorder: RecordingController
+    let shortcutManager: ShortcutManager
+    let audioPlayer: AudioPlaybackController
 
-    private let keychain = KeychainStore(service: "com.wisper.mac", account: "openai-api-key")
-    private let transcriptionService = OpenAITranscriptionService()
-    private let overlayController = OverlayWindowController()
-    private let historyURL: URL
-    private let settingsURL: URL
+    private let keychain: KeychainStore
+    private let transcriptionService: OpenAITranscriptionService
+    private let localLogger: LocalLogger
+    private let overlayController: OverlayWindowController
+    private let settingsStore: any AppSettingsStoring
+    private let historyStore: any TranscriptHistoryStoring
     private var overlayTimer: Timer?
 
-    init() {
-        let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "Wisper", directoryHint: .isDirectory)
-        historyURL = supportDirectory.appending(path: "history.json")
-        settingsURL = supportDirectory.appending(path: "settings.json")
-        let settings = loadSettings()
+    convenience init(
+        settingsStore: any AppSettingsStoring = JSONAppSettingsStore(),
+        historyStore: any TranscriptHistoryStoring = JSONTranscriptHistoryStore()
+    ) {
+        self.init(services: AppServices(settingsStore: settingsStore, historyStore: historyStore))
+    }
+
+    init(services: AppServices = .live()) {
+        recorder = services.recorder
+        shortcutManager = services.shortcutManager
+        audioPlayer = services.audioPlayer
+        keychain = services.keychain
+        transcriptionService = services.transcriptionService
+        localLogger = services.localLogger
+        overlayController = services.overlayController
+        settingsStore = services.settingsStore
+        historyStore = services.historyStore
+
+        let settings: AppSettings
+        do {
+            settings = try settingsStore.load()
+        } catch {
+            settings = .default
+            errorMessage = "Could not load saved settings. Wisper restored defaults."
+            localLogger.warning("Settings load failed; defaults restored", error: error)
+        }
+
         shortcut = settings.shortcut
         chunkingEnabled = settings.chunkingEnabled
         chunkSeconds = settings.chunkSeconds
         selectedAudioSourceID = settings.audioSourceID
         captureMode = settings.captureMode ?? .defaultMode
         showInMenuBarOnly = settings.showInMenuBarOnly ?? false
+        onboardingCompleted = settings.onboardingCompleted
+        selectedSection = .record
         recorder.refreshAudioSources()
+        refreshPermissionStatuses()
         loadHistory()
         refreshAPIKeyStatus()
         configureOverlayActions()
+        localLogger.info("App state initialized", metadata: [
+            "captureMode": captureMode.rawValue,
+            "chunkingEnabled": String(chunkingEnabled)
+        ])
         shortcutManager.start(shortcut: shortcut) { [weak self] in
             Task { @MainActor in
                 await self?.handleGlobalShortcut()
@@ -233,6 +94,14 @@ final class AppState: ObservableObject {
 
     var hasAPIKey: Bool {
         (try? keychain.read())?.isEmpty == false
+    }
+
+    var localLogFileURL: URL {
+        localLogger.logFileURL
+    }
+
+    var canCompleteOnboarding: Bool {
+        hasAPIKey && microphonePermissionStatus == .granted && screenAudioPermissionStatus.isReady
     }
 
     var selectedAudioSourceName: String {
@@ -252,6 +121,75 @@ final class AppState: ObservableObject {
         captureMode.usesMicrophone ? selectedAudioSourceName : "System output"
     }
 
+    func refreshPermissionStatuses() {
+        microphonePermissionStatus = RecordingController.microphonePermissionStatus()
+        screenAudioPermissionStatus = ScreenAudioPermission.status()
+    }
+
+    func requestMicrophonePermission() async {
+        let granted = await RecordingController.requestMicrophoneAccess()
+        refreshPermissionStatuses()
+        localLogger.info("Microphone permission requested", metadata: ["granted": String(granted)])
+
+        if granted {
+            statusMessage = "Microphone access granted"
+        } else {
+            errorMessage = "Microphone access is disabled. Enable it in System Settings > Privacy & Security > Microphone."
+        }
+    }
+
+    func requestScreenAudioPermission() {
+        let granted = ScreenAudioPermission.requestAccess()
+        refreshPermissionStatuses()
+        localLogger.info("Screen and system audio permission requested", metadata: ["granted": String(granted)])
+
+        if granted {
+            statusMessage = "Screen and system audio recording access granted"
+        } else if ScreenAudioPermission.isSupported {
+            errorMessage = "Approve Wisper in System Settings > Privacy & Security > Screen & System Audio Recording."
+        } else {
+            errorMessage = "System audio capture requires macOS 15 or later."
+        }
+    }
+
+    func openMicrophoneSettings() {
+        openSystemSettingsPane("Privacy_Microphone")
+    }
+
+    func openScreenAudioSettings() {
+        openSystemSettingsPane("Privacy_ScreenCapture")
+    }
+
+    func revealLocalLogFile() {
+        let url = localLogFileURL
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: url.path) == false {
+                try Data().write(to: url, options: .atomic)
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            errorMessage = "Could not open local log: \(error.localizedDescription)"
+        }
+    }
+
+    func completeOnboarding() {
+        guard canCompleteOnboarding else {
+            errorMessage = "Finish the API key, microphone, and screen/system audio steps before continuing."
+            return
+        }
+
+        onboardingCompleted = true
+        do {
+            try saveSettings()
+            selectedSection = .record
+            statusMessage = "Wisper is ready"
+            localLogger.info("Onboarding completed")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func saveAPIKey(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else {
@@ -263,8 +201,10 @@ final class AppState: ObservableObject {
             try keychain.save(trimmed)
             refreshAPIKeyStatus()
             statusMessage = "API key saved in Keychain"
+            localLogger.info("API key saved")
         } catch {
-            handleRecordingStartError(error)
+            localLogger.error("API key save failed", error: error)
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -273,7 +213,9 @@ final class AppState: ObservableObject {
             try keychain.delete()
             refreshAPIKeyStatus()
             statusMessage = "API key removed"
+            localLogger.info("API key removed")
         } catch {
+            localLogger.error("API key deletion failed", error: error)
             errorMessage = error.localizedDescription
         }
     }
@@ -294,24 +236,35 @@ final class AppState: ObservableObject {
         }
 
         activity = .startingRecording
+        localLogger.info("Recording start requested", metadata: [
+            "captureMode": captureMode.rawValue,
+            "audioSource": selectedAudioSourceName
+        ])
         do {
             try await recorder.start(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
             activity = .recording
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
+            localLogger.info("Recording started", metadata: ["source": recorder.lastRecordingSourceName])
             showOverlay()
             startOverlayTimer()
         } catch {
             activity = .idle
+            localLogger.error("Recording start failed", error: error)
             errorMessage = error.localizedDescription
         }
     }
 
     func stopRecording() async {
         activity = .stoppingRecording
+        localLogger.info("Recording stop requested")
         do {
             if let url = try await recorder.stop() {
                 statusMessage = "Saved recording to \(url.lastPathComponent)"
+                localLogger.info("Recording stopped", metadata: [
+                    "file": url.lastPathComponent,
+                    "durationSeconds": String(format: "%.2f", recorder.lastDurationSeconds)
+                ])
                 stopOverlayTimer()
                 await transcribeRecording(url, durationSeconds: recorder.lastDurationSeconds)
             } else {
@@ -321,6 +274,7 @@ final class AppState: ObservableObject {
             activity = .idle
             stopOverlayTimer()
             overlayController.hide()
+            localLogger.error("Recording stop failed", error: error)
             errorMessage = error.localizedDescription
             statusMessage = "Recording failed"
         }
@@ -371,6 +325,7 @@ final class AppState: ObservableObject {
         do {
             latestTranscriptText = "Importing \(sourceURL.lastPathComponent)..."
             statusMessage = "Importing \(sourceURL.lastPathComponent)"
+            localLogger.info("Audio import started", metadata: ["file": sourceURL.lastPathComponent])
             clearPendingUploadedAudio(deleteFile: true)
             let imported = try await recorder.importAudioFile(from: sourceURL)
             pendingUploadedAudio = PendingUploadedAudio(
@@ -380,7 +335,9 @@ final class AppState: ObservableObject {
             )
             latestTranscriptText = "Audio uploaded. Confirm when you are ready to transcribe."
             statusMessage = "Ready to transcribe \(sourceURL.lastPathComponent)"
+            localLogger.info("Audio import completed", metadata: ["file": sourceURL.lastPathComponent])
         } catch {
+            localLogger.error("Audio import failed", metadata: ["file": sourceURL.lastPathComponent], error: error)
             errorMessage = error.localizedDescription
             latestTranscriptText = error.localizedDescription
             statusMessage = "Upload failed"
@@ -414,17 +371,20 @@ final class AppState: ObservableObject {
         clearPendingUploadedAudio(deleteFile: true)
         latestTranscriptText = "Upload cancelled."
         statusMessage = "Ready to record"
+        localLogger.info("Pending uploaded audio cancelled")
     }
 
     func pauseRecording() {
         recorder.pause()
         statusMessage = "Recording paused"
+        localLogger.info("Recording paused")
         updateOverlay()
     }
 
     func resumeRecording() {
         recorder.resume()
         statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
+        localLogger.info("Recording resumed")
         updateOverlay()
     }
 
@@ -435,10 +395,12 @@ final class AppState: ObservableObject {
             activity = .idle
             latestTranscriptText = "Recording discarded."
             statusMessage = "Ready to record"
+            localLogger.info("Recording discarded")
             stopOverlayTimer()
             overlayController.hide()
         } catch {
             activity = recorder.isRecording ? .recording : .idle
+            localLogger.error("Recording discard failed", error: error)
             errorMessage = error.localizedDescription
         }
     }
@@ -451,10 +413,12 @@ final class AppState: ObservableObject {
             activity = .recording
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
+            localLogger.info("Recording restarted")
             showOverlay()
             startOverlayTimer()
         } catch {
             activity = recorder.isRecording ? .recording : .idle
+            localLogger.error("Recording restart failed", error: error)
             handleRecordingStartError(error)
         }
     }
@@ -477,6 +441,7 @@ final class AppState: ObservableObject {
             try saveSettings()
             shortcutManager.register(nextShortcut)
             shortcutCaptureMessage = shortcutManager.statusMessage
+            localLogger.info("Shortcut saved", metadata: ["shortcut": nextShortcut.displayText])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -492,6 +457,7 @@ final class AppState: ObservableObject {
         do {
             try saveSettings()
             statusMessage = "Audio source set to \(selectedAudioSourceName)"
+            localLogger.info("Audio source saved", metadata: ["source": selectedAudioSourceName])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -502,6 +468,7 @@ final class AppState: ObservableObject {
         do {
             try saveSettings()
             statusMessage = "Capture mode set to \(mode.displayName)"
+            localLogger.info("Capture mode saved", metadata: ["captureMode": mode.rawValue])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -515,6 +482,7 @@ final class AppState: ObservableObject {
             try saveSettings()
             statusMessage = value ? "Wisper will stay in the menu bar" : "Wisper will show as a normal app"
             applyPresentationMode(showMainWindowWhenRegular: true)
+            localLogger.info("Presentation mode changed", metadata: ["showInMenuBarOnly": String(value)])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -538,6 +506,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func openSystemSettingsPane(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else {
+            errorMessage = "Could not open System Settings."
+            return
+        }
+
+        NSWorkspace.shared.open(url)
+    }
+
     func saveChunkingSettings(enabled: Bool? = nil, seconds: Int? = nil) {
         if let enabled {
             chunkingEnabled = enabled
@@ -552,6 +529,10 @@ final class AppState: ObservableObject {
             statusMessage = chunkingEnabled
                 ? "Chunking enabled at \(chunkSeconds) seconds"
                 : "Chunking disabled"
+            localLogger.info("Chunking settings saved", metadata: [
+                "enabled": String(chunkingEnabled),
+                "chunkSeconds": String(chunkSeconds)
+            ])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -668,6 +649,11 @@ final class AppState: ObservableObject {
         statusMessage = "Transcribing \(audioURL.lastPathComponent)"
         latestTranscriptText = "Transcribing..."
         updateOverlay(detail: "Transcribing audio")
+        localLogger.info("Transcription started", metadata: [
+            "file": audioURL.lastPathComponent,
+            "allowChunking": String(allowChunking),
+            "chunkingEnabled": String(chunkingEnabled)
+        ])
 
         let startedAt = existing?.createdAt ?? Date()
         let id = existing?.id ?? UUID()
@@ -711,6 +697,10 @@ final class AppState: ObservableObject {
             selectedSection = .history
             latestTranscriptText = result.text.isEmpty ? "No text returned." : result.text
             statusMessage = result.mode == .chunked ? "Chunked transcription complete" : "Transcription complete"
+            localLogger.info("Transcription completed", metadata: [
+                "file": audioURL.lastPathComponent,
+                "mode": result.mode.rawValue
+            ])
             updateOverlay(detail: "Transcript saved")
             hideOverlay(after: 1.4)
         } catch {
@@ -731,6 +721,7 @@ final class AppState: ObservableObject {
             errorMessage = error.localizedDescription
             latestTranscriptText = error.localizedDescription
             statusMessage = "Transcription failed"
+            localLogger.error("Transcription failed", metadata: ["file": audioURL.lastPathComponent], error: error)
             updateOverlay(detail: "Transcription failed")
             hideOverlay(after: 2.4)
         }
@@ -853,72 +844,27 @@ final class AppState: ObservableObject {
         apiKeyStatus = hasAPIKey ? "Saved in Keychain" : "Not configured"
     }
 
-    private func loadSettings() -> AppSettings {
-        do {
-            guard FileManager.default.fileExists(atPath: settingsURL.path) else { return .default }
-            let data = try Data(contentsOf: settingsURL)
-            if let settings = try? JSONDecoder.wisper.decode(AppSettings.self, from: data) {
-                return settings
-            }
-
-            let storedShortcut = try JSONDecoder.wisper.decode(KeyboardShortcut.self, from: data)
-            var settings = AppSettings.default
-            settings.shortcut = storedShortcut
-            return settings
-        } catch {
-            return .default
-        }
-    }
-
     private func saveSettings() throws {
-        try FileManager.default.createDirectory(
-            at: settingsURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let data = try JSONEncoder.wisper.encode(AppSettings(
+        try settingsStore.save(AppSettings(
             shortcut: shortcut,
             chunkingEnabled: chunkingEnabled,
             chunkSeconds: chunkSeconds,
             audioSourceID: selectedAudioSourceID,
             captureMode: captureMode,
-            showInMenuBarOnly: showInMenuBarOnly
+            showInMenuBarOnly: showInMenuBarOnly,
+            onboardingCompleted: onboardingCompleted
         ))
-        try data.write(to: settingsURL, options: .atomic)
     }
 
     private func loadHistory() {
         do {
-            guard FileManager.default.fileExists(atPath: historyURL.path) else { return }
-            let data = try Data(contentsOf: historyURL)
-            history = try JSONDecoder.wisper.decode([Transcript].self, from: data)
+            history = try historyStore.load()
         } catch {
             errorMessage = "Could not load local history: \(error.localizedDescription)"
         }
     }
 
     private func saveHistory() throws {
-        try FileManager.default.createDirectory(
-            at: historyURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let data = try JSONEncoder.wisper.encode(history)
-        try data.write(to: historyURL, options: .atomic)
-    }
-}
-
-extension JSONDecoder {
-    static var wisper: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }
-}
-
-extension JSONEncoder {
-    static var wisper: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return encoder
+        try historyStore.save(history)
     }
 }

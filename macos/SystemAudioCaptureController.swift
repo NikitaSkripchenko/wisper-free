@@ -142,9 +142,9 @@ final class SystemAudioCaptureController: NSObject, SystemAudioCapturing, SCReco
     }
 
     private func ensureScreenRecordingAccess() throws {
-        guard CGPreflightScreenCaptureAccess() == false else { return }
+        guard ScreenAudioPermission.status() != .granted else { return }
 
-        if CGRequestScreenCaptureAccess() == false {
+        if ScreenAudioPermission.requestAccess() == false {
             throw SystemAudioCaptureError.screenRecordingPermissionRequired
         }
     }
