@@ -15,7 +15,7 @@ struct ContentView: View {
                             .tag(section)
                     }
                     .navigationTitle("Wisper")
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+                    .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
                 } detail: {
                     switch appViewModel.selectedSection ?? .record {
                     case .record:
@@ -218,13 +218,13 @@ private struct RecordView: View {
 
     var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 24) {
                 Text("Record")
                     .font(.title2.weight(.semibold))
 
-                VStack(spacing: 18) {
+                VStack(spacing: 16) {
                     Image(systemName: recordIconName)
-                        .font(.system(size: 72, weight: .regular))
+                        .font(.system(size: 64, weight: .regular))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(recordIconColor)
 
@@ -246,45 +246,63 @@ private struct RecordView: View {
                             .accessibilityIdentifier("recording.indicator")
                     }
 
-                    Text("Record only with everyone’s consent. Recording laws vary by location.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(
+                            "Record only with everyone’s consent. Recording laws vary by location.",
+                            systemImage: "person.2"
+                        )
 
-                    if appViewModel.captureMode == .microphoneAndSystemAudio {
-                        Text("For the clearest separate sources, use AirPods or headphones during the call.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                        if appViewModel.captureMode == .microphoneAndSystemAudio {
+                            Label(
+                                "Use AirPods or headphones for the clearest separate sources.",
+                                systemImage: "airpodspro"
+                            )
+                        }
                     }
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 620, alignment: .leading)
 
-                    HStack(spacing: 8) {
-                        Picker("Capture Mode", selection: captureModeBinding) {
-                            ForEach(RecordingCaptureMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
+                        GridRow {
+                            Text("Capture Mode")
+                            Picker("Capture Mode", selection: captureModeBinding) {
+                                ForEach(RecordingCaptureMode.allCases) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity)
+                            .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
+                        }
+
+                        GridRow {
+                            Text("Microphone")
+                            HStack(spacing: 8) {
+                                Picker("Microphone", selection: audioSourceBinding) {
+                                    Text("System Default").tag("")
+                                    ForEach(appViewModel.recorder.audioSources) { source in
+                                        Text(source.name).tag(source.id)
+                                    }
+                                    if let selectedAudioSourceID = appViewModel.selectedAudioSourceID,
+                                       appViewModel.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
+                                        Text("Unavailable Source").tag(selectedAudioSourceID)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .frame(maxWidth: .infinity)
+                                .disabled(appViewModel.captureMode.usesMicrophone == false || appViewModel.recorder.isRecording || appViewModel.isProcessing)
+
+                                Button("Refresh") {
+                                    appViewModel.refreshAudioSources()
+                                }
+                                .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
                             }
                         }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 260)
-                        .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
-
-                        Picker("Microphone", selection: audioSourceBinding) {
-                            Text("System Default").tag("")
-                            ForEach(appViewModel.recorder.audioSources) { source in
-                                Text(source.name).tag(source.id)
-                            }
-                            if let selectedAudioSourceID = appViewModel.selectedAudioSourceID,
-                               appViewModel.recorder.audioSources.contains(where: { $0.id == selectedAudioSourceID }) == false {
-                                Text("Unavailable Source").tag(selectedAudioSourceID)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 320)
-                        .disabled(appViewModel.captureMode.usesMicrophone == false || appViewModel.recorder.isRecording || appViewModel.isProcessing)
-
-                        Button("Refresh") {
-                            appViewModel.refreshAudioSources()
-                        }
-                        .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
                     }
+                    .frame(maxWidth: 620)
 
                     HStack(spacing: 12) {
                         Button {
@@ -322,16 +340,20 @@ private struct RecordView: View {
 
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 320)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .padding(.vertical, 24)
+                .padding(.horizontal, 28)
+                .frame(maxWidth: .infinity, minHeight: 360)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(.quaternary)
                 }
 
                 Spacer()
             }
-            .padding(32)
+            .frame(maxWidth: 820)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .padding(28)
 
             if isFileDropTargeted {
                 AudioFileDropOverlay(
@@ -443,7 +465,7 @@ private struct HistoryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 20) {
             Text("History")
                 .font(.title2.weight(.semibold))
 
@@ -513,19 +535,16 @@ private struct HistoryView: View {
                 HSplitView {
                     List(filteredRecords, selection: $appViewModel.selectedMeetingID) { record in
                         VStack(alignment: .leading, spacing: 7) {
-                            HStack {
-                                Text(record.title)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                Spacer()
-                                MeetingStatusPill(state: record.displayState)
-                            }
+                            Text(record.title)
+                                .font(.headline)
+                                .lineLimit(1)
                             Text(presenter.dateText(for: record))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text(record.displayState.statusText)
-                                .font(.callout)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                         .padding(.vertical, 7)
                         .tag(record.id)
@@ -536,7 +555,7 @@ private struct HistoryView: View {
                             .disabled(coordinator.activeMeetingID == record.id)
                         }
                     }
-                    .frame(minWidth: 260, idealWidth: 320)
+                    .frame(minWidth: 190, idealWidth: 220, maxWidth: 260)
 
                     if let selectedMeetingID = appViewModel.selectedMeetingID,
                        let record = coordinator.records.first(where: { $0.id == selectedMeetingID }) {
@@ -553,8 +572,9 @@ private struct HistoryView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
-        .padding(32)
-        .searchable(text: $searchText, prompt: "Search titles and dates")
+        .padding(24)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search titles and dates")
         .task {
             await Task.yield()
             reconcileSelection()
@@ -790,7 +810,7 @@ private struct MeetingDetailView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(24)
+        .padding(20)
         .task(id: record.transcriptArtifact) {
             do {
                 transcript = try await coordinator.loadTranscript(for: record)
@@ -918,13 +938,13 @@ private struct MeetingDetailView: View {
     private var stageProgress: some View {
         HStack(spacing: 10) {
             stage("Capture saved", complete: true, active: false)
-            Divider().frame(width: 22)
+            stageConnector
             stage(
                 "Transcribing",
                 complete: record.transcription.status == .completed,
                 active: record.transcription.status == .processing
             )
-            Divider().frame(width: 22)
+            stageConnector
             stage(
                 "Generating notes",
                 complete: record.lastValidNotesArtifact != nil,
@@ -939,6 +959,15 @@ private struct MeetingDetailView: View {
         Label(title, systemImage: complete ? "checkmark.circle.fill" : active ? "clock.fill" : "circle")
             .font(.caption)
             .foregroundStyle(complete ? .green : active ? .blue : .secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var stageConnector: some View {
+        Rectangle()
+            .fill(.quaternary)
+            .frame(maxWidth: 22)
+            .frame(height: 1)
     }
 }
 
