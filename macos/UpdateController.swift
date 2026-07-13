@@ -10,8 +10,8 @@ final class UpdateRelaunchGate {
         pendingInstallHandler != nil
     }
 
-    func shouldPostpone(activity: AppActivity, installHandler: @escaping () -> Void) -> Bool {
-        guard activity.blocksUpdateInstallation else { return false }
+    func shouldPostpone(canSafelyTerminate: Bool, installHandler: @escaping () -> Void) -> Bool {
+        guard canSafelyTerminate == false else { return false }
 
         if pendingInstallHandler == nil {
             pendingInstallHandler = installHandler
@@ -20,8 +20,8 @@ final class UpdateRelaunchGate {
     }
 
     @discardableResult
-    func activityDidChange(_ activity: AppActivity) -> Bool {
-        guard activity.blocksUpdateInstallation == false, let installHandler = pendingInstallHandler else {
+    func safetyDidChange(canSafelyTerminate: Bool) -> Bool {
+        guard canSafelyTerminate, let installHandler = pendingInstallHandler else {
             return false
         }
 
@@ -42,17 +42,17 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     private let relaunchGate = UpdateRelaunchGate()
     private let setAppInstallPending: (Bool) -> Void
-    private var currentActivity: AppActivity
+    private var canSafelyTerminate: Bool
     private var updaterController: SPUStandardUpdaterController!
     private var cancellables: Set<AnyCancellable> = []
 
     init(
-        activityPublisher: AnyPublisher<AppActivity, Never>,
-        initialActivity: AppActivity,
+        safetyPublisher: AnyPublisher<Bool, Never>,
+        initiallySafeToTerminate: Bool,
         setAppInstallPending: @escaping (Bool) -> Void,
         startUpdater: Bool = true
     ) {
-        self.currentActivity = initialActivity
+        canSafelyTerminate = initiallySafeToTerminate
         self.setAppInstallPending = setAppInstallPending
         super.init()
 
@@ -69,11 +69,15 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate {
             }
             .store(in: &cancellables)
 
-        activityPublisher
-            .sink { [weak self] activity in
+        safetyPublisher
+            .removeDuplicates()
+            .sink { [weak self] isSafe in
                 guard let self else { return }
-                currentActivity = activity
-                _ = relaunchGate.activityDidChange(activity)
+                canSafelyTerminate = isSafe
+                if relaunchGate.safetyDidChange(canSafelyTerminate: isSafe) {
+                    isInstallPending = false
+                    setAppInstallPending(false)
+                }
             }
             .store(in: &cancellables)
 
@@ -92,7 +96,7 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate {
         untilInvokingBlock installHandler: @escaping () -> Void
     ) -> Bool {
         let shouldPostpone = relaunchGate.shouldPostpone(
-            activity: currentActivity,
+            canSafelyTerminate: canSafelyTerminate,
             installHandler: installHandler
         )
 

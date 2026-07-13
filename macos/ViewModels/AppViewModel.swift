@@ -4,7 +4,8 @@ import Foundation
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var selectedSection: SidebarSection? = .record
-    @Published var history: [Transcript] = []
+    @Published var selectedMeetingID: UUID?
+    @Published var renameRequestedMeetingID: UUID?
     @Published var statusMessage = "Ready to record"
     @Published var errorMessage: String?
     @Published var apiKeyStatus = "Not configured"
@@ -20,39 +21,31 @@ final class AppViewModel: ObservableObject {
     @Published var onboardingCompleted = false
     @Published private(set) var microphonePermissionStatus: PermissionReadiness = .notDetermined
     @Published private(set) var screenAudioPermissionStatus: PermissionReadiness = .notDetermined
-    @Published var pendingUploadedAudio: PendingUploadedAudio?
     @Published private(set) var activity: AppActivity = .idle
     @Published private(set) var isUpdateInstallPending = false
+    @Published private(set) var meetingActionFeedback: MeetingActionFeedback?
 
     let recorder: RecordingController
+    let meetingCoordinator: MeetingOperationCoordinator
     let shortcutManager: ShortcutManager
     let audioPlayer: AudioPlaybackController
 
     private let keychain: KeychainStore
-    private let transcriptionService: OpenAITranscriptionService
     private let localLogger: LocalLogger
     private let overlayController: OverlayWindowController
     private let settingsStore: any AppSettingsStoring
-    private let historyStore: any TranscriptHistoryStoring
     private var overlayTimer: Timer?
-
-    convenience init(
-        settingsStore: any AppSettingsStoring = JSONAppSettingsStore(),
-        historyStore: any TranscriptHistoryStoring = JSONTranscriptHistoryStore()
-    ) {
-        self.init(services: AppServices(settingsStore: settingsStore, historyStore: historyStore))
-    }
+    private var lastAnnouncedMeetingStatus: String?
 
     init(services: AppServices = .live()) {
         recorder = services.recorder
+        meetingCoordinator = services.meetingCoordinator
         shortcutManager = services.shortcutManager
         audioPlayer = services.audioPlayer
         keychain = services.keychain
-        transcriptionService = services.transcriptionService
         localLogger = services.localLogger
         overlayController = services.overlayController
         settingsStore = services.settingsStore
-        historyStore = services.historyStore
 
         let settings: AppSettings
         do {
@@ -70,10 +63,17 @@ final class AppViewModel: ObservableObject {
         captureMode = settings.captureMode ?? .defaultMode
         showInMenuBarOnly = settings.showInMenuBarOnly ?? false
         onboardingCompleted = settings.onboardingCompleted
+#if DEBUG
+        if ProcessInfo.processInfo.environment["WISPER_UI_TEST_ROOT"] != nil,
+           ProcessInfo.processInfo.environment["WISPER_UI_TEST_ONBOARDING"] != "1" {
+            onboardingCompleted = true
+        }
+#endif
         selectedSection = .record
+        activity = .bootstrapping
+        isProcessing = true
         recorder.refreshAudioSources()
         refreshPermissionStatuses()
-        loadHistory()
         refreshAPIKeyStatus()
         configureOverlayActions()
         localLogger.info("App state initialized", metadata: [
@@ -87,7 +87,12 @@ final class AppViewModel: ObservableObject {
         }
         shortcutCaptureMessage = shortcutManager.statusMessage
         Task { @MainActor in
-            await Task.yield()
+            await meetingCoordinator.bootstrap()
+            activity = .idle
+            isProcessing = false
+            if case .failed(let message) = meetingCoordinator.bootstrapState {
+                errorMessage = message
+            }
             applyPresentationMode(showMainWindowWhenRegular: true)
         }
     }
@@ -104,6 +109,21 @@ final class AppViewModel: ObservableObject {
         hasAPIKey && microphonePermissionStatus == .granted && screenAudioPermissionStatus.isReady
     }
 
+    func openMeeting(id: UUID) {
+        selectedMeetingID = id
+        selectedSection = .history
+    }
+
+    func requestMeetingRename(id: UUID) {
+        openMeeting(id: id)
+        renameRequestedMeetingID = id
+    }
+
+    func clearMeetingActionFeedback(for meetingID: UUID? = nil) {
+        guard meetingID == nil || meetingActionFeedback?.meetingID == meetingID else { return }
+        meetingActionFeedback = nil
+    }
+
     var selectedAudioSourceName: String {
         recorder.audioSourceName(for: selectedAudioSourceID)
     }
@@ -113,7 +133,6 @@ final class AppViewModel: ObservableObject {
     }
 
     var activeAudioSourceName: String {
-        if pendingUploadedAudio != nil { return "Uploaded file" }
         return recorder.isRecording ? recorder.lastRecordingSourceName : configuredAudioSourceName
     }
 
@@ -224,11 +243,6 @@ final class AppViewModel: ObservableObject {
         guard isProcessing == false else { return }
         guard canBeginNewWork() else { return }
 
-        guard pendingUploadedAudio == nil else {
-            errorMessage = "Transcribe or cancel the uploaded audio before recording."
-            return
-        }
-
         guard hasAPIKey else {
             selectedSection = .settings
             errorMessage = "Save an OpenAI API key before recording. Wisper transcribes automatically when you stop."
@@ -241,7 +255,7 @@ final class AppViewModel: ObservableObject {
             "audioSource": selectedAudioSourceName
         ])
         do {
-            try await recorder.start(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
+            try await meetingCoordinator.startCapture(mode: captureMode, audioSourceID: selectedAudioSourceID)
             activity = .recording
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
@@ -259,47 +273,25 @@ final class AppViewModel: ObservableObject {
         activity = .stoppingRecording
         localLogger.info("Recording stop requested")
         do {
-            if let url = try await recorder.stop() {
-                statusMessage = "Saved recording to \(url.lastPathComponent)"
-                localLogger.info("Recording stopped", metadata: [
-                    "file": url.lastPathComponent,
-                    "durationSeconds": String(format: "%.2f", recorder.lastDurationSeconds)
-                ])
-                stopOverlayTimer()
-                await transcribeRecording(url, durationSeconds: recorder.lastDurationSeconds)
-            } else {
-                activity = .idle
+            guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
+                throw MeetingCoordinatorError.missingAPIKey
             }
+            isProcessing = true
+            stopOverlayTimer()
+            try await meetingCoordinator.stopCaptureAndProcess(
+                apiKey: apiKey,
+                chunkSeconds: chunkingEnabled ? chunkSeconds : nil
+            )
+            await monitorMeetingProcessing()
         } catch {
             activity = .idle
+            isProcessing = false
             stopOverlayTimer()
             overlayController.hide()
             localLogger.error("Recording stop failed", error: error)
             errorMessage = error.localizedDescription
             statusMessage = "Recording failed"
         }
-    }
-
-    func transcribeLatestRecording() async {
-        guard canBeginNewWork() else { return }
-        if pendingUploadedAudio != nil {
-            await transcribePendingUploadedAudio()
-            return
-        }
-
-        guard let audioURL = recorder.lastRecordingURL else {
-            errorMessage = "Record audio before transcribing."
-            return
-        }
-
-        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
-            selectedSection = .settings
-            errorMessage = "Save an OpenAI API key before transcribing."
-            return
-        }
-
-        statusMessage = "Transcribing \(audioURL.lastPathComponent)"
-        await transcribeRecording(audioURL, durationSeconds: recorder.lastDurationSeconds)
     }
 
     func importDroppedAudioFiles(_ urls: [URL]) async {
@@ -320,23 +312,24 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
+            selectedSection = .settings
+            errorMessage = "Save an OpenAI API key before importing audio."
+            return
+        }
         activity = .importingAudio
-        defer { activity = .idle }
+        isProcessing = true
         do {
             latestTranscriptText = "Importing \(sourceURL.lastPathComponent)..."
-            statusMessage = "Importing \(sourceURL.lastPathComponent)"
-            localLogger.info("Audio import started", metadata: ["file": sourceURL.lastPathComponent])
-            clearPendingUploadedAudio(deleteFile: true)
-            let imported = try await recorder.importAudioFile(from: sourceURL)
-            pendingUploadedAudio = PendingUploadedAudio(
-                originalName: sourceURL.lastPathComponent,
-                audioURL: imported.url,
-                durationSeconds: imported.durationSeconds
+            try await meetingCoordinator.importAndProcess(
+                sourceURL: sourceURL,
+                apiKey: apiKey,
+                chunkSeconds: chunkingEnabled ? chunkSeconds : nil
             )
-            latestTranscriptText = "Audio uploaded. Confirm when you are ready to transcribe."
-            statusMessage = "Ready to transcribe \(sourceURL.lastPathComponent)"
-            localLogger.info("Audio import completed", metadata: ["file": sourceURL.lastPathComponent])
+            await monitorMeetingProcessing()
         } catch {
+            activity = .idle
+            isProcessing = false
             localLogger.error("Audio import failed", metadata: ["file": sourceURL.lastPathComponent], error: error)
             errorMessage = error.localizedDescription
             latestTranscriptText = error.localizedDescription
@@ -344,54 +337,32 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func transcribePendingUploadedAudio() async {
-        guard canBeginNewWork() else { return }
-        guard let pendingUploadedAudio else {
-            errorMessage = "Drop an audio file before transcribing."
-            return
-        }
-
-        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
-            selectedSection = .settings
-            errorMessage = "Save an OpenAI API key before transcribing."
-            return
-        }
-
-        self.pendingUploadedAudio = nil
-        await transcribeRecording(
-            pendingUploadedAudio.audioURL,
-            durationSeconds: pendingUploadedAudio.durationSeconds,
-            source: "Uploaded file",
-            originalName: pendingUploadedAudio.originalName,
-            allowChunking: pendingUploadedAudio.durationSeconds != nil
-        )
-    }
-
-    func cancelPendingUploadedAudio() {
-        clearPendingUploadedAudio(deleteFile: true)
-        latestTranscriptText = "Upload cancelled."
-        statusMessage = "Ready to record"
-        localLogger.info("Pending uploaded audio cancelled")
-    }
-
     func pauseRecording() {
-        recorder.pause()
-        statusMessage = "Recording paused"
-        localLogger.info("Recording paused")
-        updateOverlay()
+        do {
+            try meetingCoordinator.pauseCapture()
+            statusMessage = "Recording paused"
+            localLogger.info("Recording paused")
+            updateOverlay()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func resumeRecording() {
-        recorder.resume()
-        statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
-        localLogger.info("Recording resumed")
-        updateOverlay()
+        do {
+            try meetingCoordinator.resumeCapture()
+            statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
+            localLogger.info("Recording resumed")
+            updateOverlay()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func discardRecording() async {
         activity = .discardingRecording
         do {
-            try await recorder.discard()
+            try await meetingCoordinator.discardCapture()
             activity = .idle
             latestTranscriptText = "Recording discarded."
             statusMessage = "Ready to record"
@@ -409,7 +380,7 @@ final class AppViewModel: ObservableObject {
         guard canBeginNewWork() else { return }
         activity = .restartingRecording
         do {
-            try await recorder.restart(captureMode: captureMode, audioSourceID: selectedAudioSourceID)
+            try await meetingCoordinator.restartCapture(mode: captureMode, audioSourceID: selectedAudioSourceID)
             activity = .recording
             latestTranscriptText = "Recording..."
             statusMessage = "Recording from \(recorder.lastRecordingSourceName)"
@@ -538,201 +509,193 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func copyTranscript(_ transcript: Transcript) {
-        guard transcript.transcriptionText.isEmpty == false else {
-            errorMessage = "No transcript text to copy."
-            return
-        }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(transcript.transcriptionText, forType: .string)
-        statusMessage = "Transcript copied"
-    }
-
-    func revealAudio(_ transcript: Transcript) {
-        guard let url = transcript.audioURL, transcript.canUseAudio else {
-            errorMessage = "Audio file is missing."
-            return
-        }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    func playAudio(_ transcript: Transcript) {
-        guard let url = transcript.audioURL, transcript.canUseAudio else {
-            errorMessage = "Audio file is missing."
-            return
-        }
-
-        do {
-            try audioPlayer.toggle(url: url)
-            statusMessage = audioPlayer.playingURL == nil ? "Audio stopped" : "Playing audio"
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func exportTranscript(_ transcript: Transcript) {
-        guard transcript.transcriptionText.isEmpty == false else {
-            errorMessage = "No transcript text to export."
-            return
-        }
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.nameFieldStringValue = "\(transcript.title).txt"
-        panel.canCreateDirectories = true
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try transcript.transcriptionText.write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = "Transcript exported"
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func retranscribe(_ transcript: Transcript) async {
-        guard canBeginNewWork() else { return }
-        guard let url = transcript.audioURL, transcript.canUseAudio else {
-            errorMessage = "Audio file is missing."
-            return
-        }
-
-        await transcribeRecording(url, durationSeconds: transcript.durationSeconds, replacing: transcript)
-    }
-
-    func removeFromHistory(_ transcript: Transcript) {
-        history.removeAll { $0.id == transcript.id }
-        do {
-            try saveHistory()
-            statusMessage = "Removed from history"
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func clearPendingUploadedAudio(deleteFile: Bool) {
-        guard let pendingUploadedAudio else { return }
-        self.pendingUploadedAudio = nil
-
-        if deleteFile {
-            recorder.removeImportedAudio(pendingUploadedAudio.audioURL)
-        }
-    }
-
-    private func transcribeRecording(
-        _ audioURL: URL,
-        durationSeconds: TimeInterval?,
-        replacing existing: Transcript? = nil,
-        source: String? = nil,
-        originalName: String? = nil,
-        allowChunking: Bool = true
-    ) async {
-        let continuesRecordingWorkflow = activity == .stoppingRecording
-        if continuesRecordingWorkflow == false {
-            guard activity == .idle, canBeginNewWork() else { return }
-        }
-
-        activity = .transcribing
-        defer {
-            isProcessing = false
-            activity = .idle
-        }
-
-        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
-            selectedSection = .settings
-            errorMessage = "Save an OpenAI API key before transcribing."
-            return
-        }
-
-        isProcessing = true
-        statusMessage = "Transcribing \(audioURL.lastPathComponent)"
-        latestTranscriptText = "Transcribing..."
-        updateOverlay(detail: "Transcribing audio")
-        localLogger.info("Transcription started", metadata: [
-            "file": audioURL.lastPathComponent,
-            "allowChunking": String(allowChunking),
-            "chunkingEnabled": String(chunkingEnabled)
-        ])
-
-        let startedAt = existing?.createdAt ?? Date()
-        let id = existing?.id ?? UUID()
-        let pendingItem = Transcript(
-            id: id,
-            createdAt: startedAt,
-            source: source ?? existing?.source ?? recorder.lastRecordingSourceName,
-            originalName: originalName ?? existing?.originalName ?? audioURL.lastPathComponent,
-            audioPath: audioURL.path,
-            durationSeconds: durationSeconds,
-            status: .processing,
-            transcriptionText: existing?.transcriptionText ?? "",
-            errorMessage: nil,
-            mode: existing?.mode ?? "plain"
-        )
-        upsertHistoryItem(pendingItem)
-
-        do {
-            let chunkLength = chunkingEnabled && allowChunking ? chunkSeconds : nil
-            let result = try await transcriptionService.transcribe(
-                audioURL: audioURL,
-                apiKey: apiKey,
-                chunkSeconds: chunkLength
-            ) { progress in
-                self.handleTranscriptionProgress(progress)
-            }
-            let transcript = Transcript(
-                id: id,
-                createdAt: startedAt,
-                source: pendingItem.source,
-                originalName: pendingItem.originalName,
-                audioPath: audioURL.path,
-                durationSeconds: durationSeconds,
-                status: .completed,
-                transcriptionText: result.text,
-                errorMessage: nil,
-                mode: result.mode.rawValue
-            )
-            upsertHistoryItem(transcript)
-            try saveHistory()
-            selectedSection = .history
-            latestTranscriptText = result.text.isEmpty ? "No text returned." : result.text
-            statusMessage = result.mode == .chunked ? "Chunked transcription complete" : "Transcription complete"
-            localLogger.info("Transcription completed", metadata: [
-                "file": audioURL.lastPathComponent,
-                "mode": result.mode.rawValue
-            ])
-            updateOverlay(detail: "Transcript saved")
-            hideOverlay(after: 1.4)
-        } catch {
-            let failed = Transcript(
-                id: id,
-                createdAt: startedAt,
-                source: pendingItem.source,
-                originalName: pendingItem.originalName,
-                audioPath: audioURL.path,
-                durationSeconds: durationSeconds,
-                status: .failed,
-                transcriptionText: pendingItem.transcriptionText,
-                errorMessage: error.localizedDescription,
-                mode: pendingItem.mode
-            )
-            upsertHistoryItem(failed)
-            try? saveHistory()
-            errorMessage = error.localizedDescription
-            latestTranscriptText = error.localizedDescription
-            statusMessage = "Transcription failed"
-            localLogger.error("Transcription failed", metadata: ["file": audioURL.lastPathComponent], error: error)
-            updateOverlay(detail: "Transcription failed")
-            hideOverlay(after: 2.4)
-        }
-
-    }
-
     func setUpdateInstallPending(_ isPending: Bool) {
         isUpdateInstallPending = isPending
         if isPending {
             statusMessage = "Update will install when current work finishes"
         }
+    }
+
+    func retryTranscription(for record: MeetingRecord) async {
+        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
+            selectedSection = .settings
+            errorMessage = "Save an OpenAI API key before retrying."
+            return
+        }
+        do {
+            clearMeetingActionFeedback(for: record.id)
+            activity = .transcribing
+            isProcessing = true
+            try await meetingCoordinator.retryTranscription(
+                meetingID: record.id,
+                apiKey: apiKey,
+                chunkSeconds: chunkingEnabled ? chunkSeconds : nil
+            )
+            await monitorMeetingProcessing()
+        } catch {
+            activity = .idle
+            isProcessing = false
+            presentMeetingError(error, for: record.id, action: .retryTranscription)
+        }
+    }
+
+    func retryNotes(for record: MeetingRecord) async {
+        guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
+            selectedSection = .settings
+            errorMessage = "Save an OpenAI API key before retrying notes."
+            return
+        }
+        do {
+            clearMeetingActionFeedback(for: record.id)
+            activity = .transcribing
+            isProcessing = true
+            try await meetingCoordinator.retryNotes(meetingID: record.id, apiKey: apiKey)
+            await monitorMeetingProcessing()
+        } catch {
+            activity = .idle
+            isProcessing = false
+            presentMeetingError(error, for: record.id, action: .retryNotes)
+        }
+    }
+
+    func removeMeeting(_ record: MeetingRecord) async {
+        activity = .discardingRecording
+        defer { activity = .idle }
+        do {
+            clearMeetingActionFeedback(for: record.id)
+            try await meetingCoordinator.removeMeeting(id: record.id)
+            if selectedMeetingID == record.id {
+                selectedMeetingID = meetingCoordinator.records.first?.id
+            }
+            statusMessage = "Meeting removed"
+        } catch {
+            presentMeetingError(error, for: record.id, action: .remove)
+        }
+    }
+
+    func renameMeeting(_ record: MeetingRecord, title: String) async -> Bool {
+        do {
+            clearMeetingActionFeedback(for: record.id)
+            _ = try await meetingCoordinator.renameMeeting(id: record.id, title: title)
+            statusMessage = "Meeting renamed"
+            return true
+        } catch {
+            presentMeetingError(error, for: record.id, action: .rename)
+            return false
+        }
+    }
+
+    func copyMeetingTranscript(_ record: MeetingRecord) async {
+        do {
+            guard let transcript = try await meetingCoordinator.loadTranscript(for: record) else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(transcript, forType: .string)
+            statusMessage = "Transcript copied"
+        } catch {
+            presentMeetingError(error, for: record.id, action: .copyTranscript)
+        }
+    }
+
+    func copyMeetingNotes(_ record: MeetingRecord) async {
+        do {
+            guard let notes = try await meetingCoordinator.loadNotes(for: record) else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(notes.plainText, forType: .string)
+            statusMessage = "Notes copied"
+        } catch {
+            presentMeetingError(error, for: record.id, action: .copyNotes)
+        }
+    }
+
+    func playMeetingAudio(_ record: MeetingRecord) async {
+        do {
+            let url = try await meetingCoordinator.audioURL(for: record)
+            do {
+                try audioPlayer.toggle(url: url)
+            } catch {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                meetingActionFeedback = MeetingActionFeedback(
+                    meetingID: record.id,
+                    action: .playAudio,
+                    message: "This audio format cannot be played here. Wisper revealed the owned file in Finder.",
+                    isRetryable: false
+                )
+            }
+        } catch {
+            presentMeetingError(error, for: record.id, action: .playAudio)
+        }
+    }
+
+    func retryMeetingBootstrap() async {
+        await meetingCoordinator.bootstrap()
+        if case .failed(let message) = meetingCoordinator.bootstrapState {
+            errorMessage = message
+        }
+    }
+
+    func revealMeetingStorage() {
+        NSWorkspace.shared.activateFileViewerSelecting([AppStorageLocation.supportDirectory])
+    }
+
+    func revealMeetingAudio(_ record: MeetingRecord) async {
+        do {
+            let url = try await meetingCoordinator.audioURL(for: record)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            presentMeetingError(error, for: record.id, action: .revealAudio)
+        }
+    }
+
+    private func monitorMeetingProcessing() async {
+        let processingMeetingID = meetingCoordinator.activeMeetingID
+        activity = .transcribing
+        while meetingCoordinator.canSafelyTerminate == false {
+            if let id = meetingCoordinator.activeMeetingID,
+               let record = meetingCoordinator.records.first(where: { $0.id == id }) {
+                statusMessage = record.displayState.statusText
+                latestTranscriptText = record.displayState.statusText
+                updateOverlay(detail: record.displayState.statusText)
+                announceMeetingStatusIfNeeded(record.displayState.statusText)
+            }
+            try? await Task.sleep(for: .milliseconds(80))
+        }
+
+        isProcessing = false
+        activity = .idle
+        overlayController.hide()
+        if let completed = meetingCoordinator.records.first(where: { $0.id == processingMeetingID })
+            ?? meetingCoordinator.records.first {
+            statusMessage = completed.displayState.statusText
+            if let transcript = try? await meetingCoordinator.loadTranscript(for: completed) {
+                latestTranscriptText = transcript
+            }
+            openMeeting(id: completed.id)
+        }
+    }
+
+    private func presentMeetingError(_ error: Error, for meetingID: UUID, action: MeetingAction) {
+        let retryable: Bool
+        if let failure = error as? MeetingFailure {
+            retryable = failure.isRetryable
+        } else {
+            retryable = true
+        }
+        meetingActionFeedback = MeetingActionFeedback(
+            meetingID: meetingID,
+            action: action,
+            message: error.localizedDescription,
+            isRetryable: retryable
+        )
+    }
+
+    private func announceMeetingStatusIfNeeded(_ status: String) {
+        guard lastAnnouncedMeetingStatus != status else { return }
+        lastAnnouncedMeetingStatus = status
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [.announcement: status, .priority: NSAccessibilityPriorityLevel.high.rawValue]
+        )
     }
 
     private func canBeginNewWork() -> Bool {
@@ -741,34 +704,6 @@ final class AppViewModel: ObservableObject {
             return false
         }
         return true
-    }
-
-    private func handleTranscriptionProgress(_ progress: TranscriptionProgress) {
-        switch progress {
-        case .chunkingStart:
-            statusMessage = "Splitting audio into \(chunkSeconds)-second chunks"
-            updateOverlay(detail: "Splitting audio")
-        case .chunkingComplete(let total):
-            statusMessage = "Created \(total) chunks"
-            updateOverlay(detail: "Created \(total) chunks")
-        case .transcriptionStart(let label):
-            statusMessage = "Transcribing \(label)"
-            updateOverlay(detail: "Transcribing \(label)")
-        case .transcriptionComplete(let label):
-            statusMessage = "Completed \(label)"
-        case .chunkComplete(let current, let total):
-            latestTranscriptText = "Transcribed chunk \(current) of \(total)."
-            updateOverlay(detail: "Chunk \(current) of \(total) complete")
-        }
-    }
-
-    private func upsertHistoryItem(_ item: Transcript) {
-        if let index = history.firstIndex(where: { $0.id == item.id }) {
-            history[index] = item
-        } else {
-            history.insert(item, at: 0)
-        }
-        history.sort { $0.createdAt > $1.createdAt }
     }
 
     private func handleGlobalShortcut() async {
@@ -856,15 +791,4 @@ final class AppViewModel: ObservableObject {
         ))
     }
 
-    private func loadHistory() {
-        do {
-            history = try historyStore.load()
-        } catch {
-            errorMessage = "Could not load local history: \(error.localizedDescription)"
-        }
-    }
-
-    private func saveHistory() throws {
-        try historyStore.save(history)
-    }
 }

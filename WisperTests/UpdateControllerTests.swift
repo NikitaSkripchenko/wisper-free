@@ -3,11 +3,11 @@ import XCTest
 
 @MainActor
 final class UpdateControllerTests: XCTestCase {
-    func testIdleActivityDoesNotPostponeRelaunch() {
+    func testSafeCoordinatorDoesNotPostponeRelaunch() {
         let gate = UpdateRelaunchGate()
         var installCount = 0
 
-        let postponed = gate.shouldPostpone(activity: .idle) {
+        let postponed = gate.shouldPostpone(canSafelyTerminate: true) {
             installCount += 1
         }
 
@@ -16,34 +16,33 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertEqual(installCount, 0)
     }
 
-    func testBusyActivityDefersUntilIdleExactlyOnce() {
+    func testUnsafeCoordinatorDefersUntilSafeExactlyOnce() {
         let gate = UpdateRelaunchGate()
         var installCount = 0
 
-        XCTAssertTrue(gate.shouldPostpone(activity: .recording) {
+        XCTAssertTrue(gate.shouldPostpone(canSafelyTerminate: false) {
             installCount += 1
         })
         XCTAssertTrue(gate.hasPendingInstall)
 
-        XCTAssertFalse(gate.activityDidChange(.stoppingRecording))
-        XCTAssertFalse(gate.activityDidChange(.transcribing))
-        XCTAssertTrue(gate.activityDidChange(.idle))
-        XCTAssertFalse(gate.activityDidChange(.idle))
+        XCTAssertFalse(gate.safetyDidChange(canSafelyTerminate: false))
+        XCTAssertTrue(gate.safetyDidChange(canSafelyTerminate: true))
+        XCTAssertFalse(gate.safetyDidChange(canSafelyTerminate: true))
 
         XCTAssertFalse(gate.hasPendingInstall)
         XCTAssertEqual(installCount, 1)
     }
 
-    func testRestartTransitionNeverLeaksIdle() {
+    func testUnsafeTransitionsNeverReleasePendingInstall() {
         let gate = UpdateRelaunchGate()
         var installCount = 0
 
-        XCTAssertTrue(gate.shouldPostpone(activity: .recording) {
+        XCTAssertTrue(gate.shouldPostpone(canSafelyTerminate: false) {
             installCount += 1
         })
 
-        XCTAssertFalse(gate.activityDidChange(.restartingRecording))
-        XCTAssertFalse(gate.activityDidChange(.recording))
+        XCTAssertFalse(gate.safetyDidChange(canSafelyTerminate: false))
+        XCTAssertFalse(gate.safetyDidChange(canSafelyTerminate: false))
         XCTAssertEqual(installCount, 0)
     }
 
@@ -52,14 +51,14 @@ final class UpdateControllerTests: XCTestCase {
         var firstInstallCount = 0
         var secondInstallCount = 0
 
-        XCTAssertTrue(gate.shouldPostpone(activity: .recording) {
+        XCTAssertTrue(gate.shouldPostpone(canSafelyTerminate: false) {
             firstInstallCount += 1
         })
-        XCTAssertTrue(gate.shouldPostpone(activity: .transcribing) {
+        XCTAssertTrue(gate.shouldPostpone(canSafelyTerminate: false) {
             secondInstallCount += 1
         })
 
-        XCTAssertTrue(gate.activityDidChange(.idle))
+        XCTAssertTrue(gate.safetyDidChange(canSafelyTerminate: true))
         XCTAssertEqual(firstInstallCount, 1)
         XCTAssertEqual(secondInstallCount, 0)
     }
@@ -68,12 +67,12 @@ final class UpdateControllerTests: XCTestCase {
         let gate = UpdateRelaunchGate()
         var installCount = 0
 
-        XCTAssertTrue(gate.shouldPostpone(activity: .discardingRecording) {
+        XCTAssertTrue(gate.shouldPostpone(canSafelyTerminate: false) {
             installCount += 1
         })
         gate.cancelPendingInstall()
 
-        XCTAssertFalse(gate.activityDidChange(.idle))
+        XCTAssertFalse(gate.safetyDidChange(canSafelyTerminate: true))
         XCTAssertFalse(gate.hasPendingInstall)
         XCTAssertEqual(installCount, 0)
     }

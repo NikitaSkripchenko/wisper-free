@@ -2,7 +2,7 @@
 
 Native macOS transcription app.
 
-Wisper is a native macOS Swift application using SwiftUI, AppKit-era system conventions, Keychain, the native microphone stack, and the OpenAI Swift SDK.
+Wisper is a native macOS Swift application using SwiftUI, Keychain, ScreenCaptureKit, AVFoundation, and the OpenAI Swift SDK.
 
 ## Native macOS App
 
@@ -19,30 +19,34 @@ open Wisper.xcodeproj
 
 Then choose the `Wisper` scheme and press Run. The Xcode project builds a native macOS `.app` bundle and includes the microphone privacy usage description required by macOS.
 
-The Swift app currently includes first-run setup plus native Record, History, and Settings surfaces. It records audio to local Application Support storage, saves the OpenAI API key in Keychain, sends recorded audio to `gpt-4o-transcribe` through the Swift SDK, and stores transcript history locally.
+The Swift app includes first-run setup plus native Record, History, and Settings surfaces. It records or imports audio into local Application Support storage, saves the OpenAI API key in Keychain, sends audio to `gpt-4o-transcribe`, and then generates structured meeting notes with the pinned `gpt-5-mini-2025-08-07` model. Raw audio, transcripts, and generated notes remain available in per-meeting local history.
 
 Native app features now include:
 - Signed over-the-air updates through Sparkle 2.9.3, with automatic daily checks and explicit Install/Later/Skip prompts.
 - Configurable system-wide recording shortcut, defaulting to `Command Shift Space`.
 - Floating native overlay while recording, with Discard, Start Over, Pause/Resume, and Stop controls.
-- Automatic save-and-transcribe when recording stops.
+- Separate microphone and system-audio capture on macOS 15+, plus a derived transcription mix when both sources are enabled.
+- Automatic capture/import → transcription → grounded meeting-note generation, with stage-specific progress and retry actions.
 - First-run onboarding for API key, microphone, and screen/system audio permissions.
 - Local JSONL diagnostics under Application Support, with a Settings action to reveal the log file.
-- Native chunked transcription for longer recordings, enabled by default at 480-second chunks and configurable in Settings.
-- History actions for audio playback, reveal in Finder, copy transcript, save transcript, retranscribe, and remove from history.
-- Local JSON history and settings under Application Support, with API keys kept in Keychain.
+- Byte-safe native chunked transcription for longer recordings, enabled by default at 480-second chunks and configurable in Settings. Uploads stay below a 24 MiB safety ceiling and use at most two concurrent requests.
+- Grounded notes with Summary, Decisions, Action Items, and Open Questions. Every generated item must carry exact transcript evidence; unsupported owners and due dates are rejected.
+- History actions for stage-specific retry, audio playback, reveal in Finder, copy notes, copy raw transcript, and removal.
+- Crash-recoverable per-meeting JSON records and attempt-scoped transcript/note artifacts under Application Support. Legacy transcript history is migrated once; damaged records are quarantined without blocking healthy history.
 
 Source layout:
-- `macos/TranscriptionService/`: transcription pipeline, chunking, and OpenAI SDK boundary.
-- `macos/Models/`: app models and persisted settings types.
+- `macos/TranscriptionService/`: transcription, chunking, grounded-note generation, and OpenAI SDK boundaries.
+- `macos/Persistence/`: atomic per-meeting history and migration.
+- `macos/Models/`: app, meeting, artifact, and persisted settings types.
 - `macos/ViewModels/`: observable view models, including `AppViewModel`.
 - `macos/Views/`: SwiftUI views.
 - `macos/`: native app services/controllers, assets, Info.plist, and entitlements.
-- `WisperTests/`: unit tests for update gating and long-file transcription orchestration.
+- `WisperTests/`: unit and integration tests for capture metrics, persistence recovery, coordinator transitions, retry/cancellation behavior, transport limits, note validation, and update gating.
 
 Native chunking notes:
 - The Swift app splits long recordings locally with AVFoundation before sending each chunk to OpenAI.
-- Chunked transcripts are stitched in order with chunk labels in the saved transcript text.
+- Chunked transcripts are stitched in source order with blank-line boundaries.
+- Supported imports are MP3, MP4, MPEG, MPGA, M4A, WAV, and WebM.
 - The chunking toggle and chunk length are saved in the native app settings. Chunk length accepts 60 to 3600 seconds.
 - The app does not need `ffmpeg` for native chunking.
 
@@ -60,13 +64,35 @@ Run the unit tests:
 xcodebuild test -project Wisper.xcodeproj -scheme Wisper -configuration Debug -destination 'platform=macOS' -clonedSourcePackagesDirPath build/SourcePackages
 ```
 
+The shared scheme runs both `WisperTests` and the isolated `WisperUITests` meeting-history scenarios. Real microphone, ScreenCaptureKit permission prompts, and meeting-app routing are intentionally excluded from UI automation.
+
+Run the opt-in pinned-model notes evaluation with an OpenAI key:
+
+```bash
+WISPER_LIVE_EVAL_OPENAI_API_KEY='your-key' \
+  xcodebuild test -project Wisper.xcodeproj -scheme Wisper -destination 'platform=macOS' \
+  -only-testing:WisperTests/MeetingNotesLiveEvalTests
+```
+
+Before release, complete this hardware matrix and record the capture metrics written to Wisper's local log:
+
+| Setup | Requirement | Check |
+| --- | --- | --- |
+| macOS 15+, AirPods/headphones, Zoom | Blocking release reference | Separate microphone/system files; usable mix; sync and clipping metrics pass |
+| macOS 15+, AirPods/headphones, Meet | Compatibility | Capture, transcript, and grounded notes complete |
+| macOS 15+, AirPods/headphones, Teams | Compatibility | Capture, transcript, and grounded notes complete |
+| macOS 15+, built-in speakers | Compatibility | Document acoustic bleed and transcript impact |
+| macOS 14, microphone only | Blocking compatibility | Build launches; record, pause/resume, restart, transcript, notes, and retry work |
+
+The release-reference capture thresholds are source start delta ≤100 ms, decoded-duration delta ≤100 ms, clipped-frame ratio <0.1%, zero dropped buffers, and zero writer backpressure failures. A failed blocking row stops release.
+
 ## Releases
 
 Release builds are automated with GitHub Actions on every non-release commit pushed to `main`, including merged PRs. The workflow runs the unit tests, bumps the app patch version by default, builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, generates an EdDSA-signed Sparkle appcast, and commits the version bump back to `main`. It uploads the DMG and appcast to a draft GitHub Release, verifies both assets, then publishes the release atomically.
 
 The workflow also supports manual runs from the GitHub Actions tab. Use `patch`, `minor`, or `major` to choose the bump type, or `none` to rebuild and republish the current checked-in version after a failed release attempt.
 
-For a public repo on a free GitHub account, this uses the standard GitHub-hosted `macos-15` runner and the built-in `GITHUB_TOKEN`; no paid runner or personal access token is required. In repository settings, enable Actions workflow permissions for `Read and write permissions` so the workflow can push the version bump commit, create tags, and create releases. If `main` is branch-protected against direct pushes, the default `GITHUB_TOKEN` may be blocked; use a ruleset/bypass that permits the workflow's release commit or switch to a release-PR flow instead.
+For a public repo on a free GitHub account, this uses the GitHub-hosted `macos-26` runner and the built-in `GITHUB_TOKEN`; no paid runner or personal access token is required. In repository settings, enable Actions workflow permissions for `Read and write permissions` so the workflow can push the version bump commit, create tags, and create releases. If `main` is branch-protected against direct pushes, the default `GITHUB_TOKEN` may be blocked; use a ruleset/bypass that permits the workflow's release commit or switch to a release-PR flow instead.
 
 Required GitHub repository secrets:
 - `APPLE_ID`: Apple Developer account email used for notarization.
@@ -88,7 +114,7 @@ The stable appcast is published at:
 https://github.com/NikitaSkripchenko/wisper-free/releases/latest/download/appcast.xml
 ```
 
-The first release containing Sparkle must still be installed manually because older versions cannot discover the appcast. Subsequent versions can update in place. If Wisper is recording, importing, stopping, restarting, discarding, or transcribing when installation is requested, relaunch waits until that work reaches a stable idle state.
+The first release containing Sparkle must still be installed manually because older versions cannot discover the appcast. Subsequent versions can update in place. If Wisper is preparing history, recording, importing, transcribing, or generating notes when installation is requested, relaunch waits until the meeting coordinator confirms there is no capture or persisted work in flight.
 
 Published releases are immutable. A failed draft can be rebuilt with the manual `none` option, but a faulty published build must be fixed by shipping a higher `CFBundleVersion`; do not replace a live DMG or appcast under an existing version.
 

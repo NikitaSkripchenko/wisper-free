@@ -17,6 +17,16 @@
 		2A0000010000000000000007 /* AppPersistenceStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000020000000000000006 /* AppPersistenceStores.swift */; };
 		2A0000010000000000000008 /* AppPersistenceStoresTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000020000000000000007 /* AppPersistenceStoresTests.swift */; };
 		2A0000010000000000000009 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000020000000000000008 /* AppServices.swift */; };
+		2B0000010000000000000001 /* MeetingNotesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000001 /* MeetingNotesService.swift */; };
+		2B0000010000000000000002 /* MeetingNotesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000002 /* MeetingNotesServiceTests.swift */; };
+		2B0000010000000000000003 /* CaptureFeasibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000003 /* CaptureFeasibility.swift */; };
+		2B0000010000000000000004 /* CaptureFeasibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000004 /* CaptureFeasibilityTests.swift */; };
+		2B0000010000000000000005 /* MeetingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000005 /* MeetingModels.swift */; };
+		2B0000010000000000000006 /* MeetingHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000006 /* MeetingHistoryStore.swift */; };
+		2B0000010000000000000007 /* MeetingHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000007 /* MeetingHistoryStoreTests.swift */; };
+		2B0000010000000000000008 /* MeetingProcessingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000008 /* MeetingProcessingCoordinator.swift */; };
+		2B0000010000000000000009 /* MeetingProcessingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000009 /* MeetingProcessingCoordinatorTests.swift */; };
+		2B0000010000000000000010 /* MeetingNotesLiveEvalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000010 /* MeetingNotesLiveEvalTests.swift */; };
 		8408C3BA2FDC20670079C698 /* ShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B82FDC20670079C698 /* ShortcutManager.swift */; };
 		8408C3BB2FDC20670079C698 /* WisperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B92FDC20670079C698 /* WisperApp.swift */; };
 		8408C3BC2FDC20670079C698 /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B62FDC20670079C698 /* OverlayWindowController.swift */; };
@@ -30,10 +40,19 @@
 		A10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A10001010000000000000001 /* Sparkle */; };
 		A10000010000000000000002 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000001 /* UpdateController.swift */; };
 		A10000010000000000000003 /* UpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000002 /* UpdateControllerTests.swift */; };
+		C10000010000000000000001 /* UITestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000020000000000000001 /* UITestFixtures.swift */; };
+		C10000010000000000000002 /* WisperMeetingFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000020000000000000002 /* WisperMeetingFlowUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		A10000600000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B0000010000000000000060 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0B0000010000000000000040;
+			remoteInfo = Wisper;
+		};
+		C10000060000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 0B0000010000000000000060 /* Project object */;
 			proxyType = 1;
@@ -54,6 +73,16 @@
 		2A0000020000000000000006 /* AppPersistenceStores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPersistenceStores.swift; sourceTree = "<group>"; };
 		2A0000020000000000000007 /* AppPersistenceStoresTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPersistenceStoresTests.swift; sourceTree = "<group>"; };
 		2A0000020000000000000008 /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
+		2B0000020000000000000001 /* MeetingNotesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesService.swift; sourceTree = "<group>"; };
+		2B0000020000000000000002 /* MeetingNotesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesServiceTests.swift; sourceTree = "<group>"; };
+		2B0000020000000000000003 /* CaptureFeasibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeasibility.swift; sourceTree = "<group>"; };
+		2B0000020000000000000004 /* CaptureFeasibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeasibilityTests.swift; sourceTree = "<group>"; };
+		2B0000020000000000000005 /* MeetingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingModels.swift; sourceTree = "<group>"; };
+		2B0000020000000000000006 /* MeetingHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistoryStore.swift; sourceTree = "<group>"; };
+		2B0000020000000000000007 /* MeetingHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistoryStoreTests.swift; sourceTree = "<group>"; };
+		2B0000020000000000000008 /* MeetingProcessingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingCoordinator.swift; sourceTree = "<group>"; };
+		2B0000020000000000000009 /* MeetingProcessingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingCoordinatorTests.swift; sourceTree = "<group>"; };
+		2B0000020000000000000010 /* MeetingNotesLiveEvalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesLiveEvalTests.swift; sourceTree = "<group>"; };
 		8408C3AE2FDC20670079C698 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		8408C3AF2FDC20670079C698 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8408C3B12FDC20670079C698 /* AudioPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackController.swift; sourceTree = "<group>"; };
@@ -69,6 +98,9 @@
 		A10000100000000000000001 /* UpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
 		A10000100000000000000002 /* UpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateControllerTests.swift; sourceTree = "<group>"; };
 		A10000100000000000000003 /* WisperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WisperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000020000000000000001 /* UITestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestFixtures.swift; sourceTree = "<group>"; };
+		C10000020000000000000002 /* WisperMeetingFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WisperMeetingFlowUITests.swift; sourceTree = "<group>"; };
+		C10000020000000000000003 /* WisperUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WisperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +120,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C10000050000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -95,6 +134,7 @@
 			isa = PBXGroup;
 			children = (
 				016A12262FED2A7900AA6B28 /* AudioChunker.swift */,
+				2B0000020000000000000001 /* MeetingNotesService.swift */,
 				016A12272FED2A7900AA6B28 /* OpenAITranscriptionService.swift */,
 			);
 			path = TranscriptionService;
@@ -105,6 +145,7 @@
 			children = (
 				0B0000010000000000000032 /* Products */,
 				A10000200000000000000001 /* WisperTests */,
+				C10000030000000000000001 /* WisperUITests */,
 				2A0000030000000000000002 /* macos */,
 				016A12242FE9925D00AA6B28 /* TODO.md */,
 			);
@@ -115,6 +156,7 @@
 			children = (
 				0B0000010000000000000010 /* Wisper.app */,
 				A10000100000000000000003 /* WisperTests.xctest */,
+				C10000020000000000000003 /* WisperUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -126,9 +168,11 @@
 				2A0000020000000000000008 /* AppServices.swift */,
 				8408C3AF2FDC20670079C698 /* Assets.xcassets */,
 				8408C3B12FDC20670079C698 /* AudioPlaybackController.swift */,
+				2B0000020000000000000003 /* CaptureFeasibility.swift */,
 				8408C3B32FDC20670079C698 /* Info.plist */,
 				8408C3B42FDC20670079C698 /* KeychainStore.swift */,
 				2A0000020000000000000001 /* LocalLogger.swift */,
+				2B0000020000000000000008 /* MeetingProcessingCoordinator.swift */,
 				2A0000030000000000000003 /* Models */,
 				2A0000020000000000000003 /* PermissionReadiness.swift */,
 				2A0000030000000000000006 /* Persistence */,
@@ -137,6 +181,7 @@
 				8408C3B82FDC20670079C698 /* ShortcutManager.swift */,
 				8408C3C62FDC20670079C699 /* SystemAudioCaptureController.swift */,
 				A10000100000000000000001 /* UpdateController.swift */,
+				C10000020000000000000001 /* UITestFixtures.swift */,
 				2A0000030000000000000004 /* ViewModels */,
 				2A0000030000000000000005 /* Views */,
 				8408C3C62FDC20670079C698 /* Wisper.entitlements */,
@@ -149,6 +194,7 @@
 			isa = PBXGroup;
 			children = (
 				2A0000020000000000000005 /* AppModels.swift */,
+				2B0000020000000000000005 /* MeetingModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -173,6 +219,7 @@
 			isa = PBXGroup;
 			children = (
 				2A0000020000000000000006 /* AppPersistenceStores.swift */,
+				2B0000020000000000000006 /* MeetingHistoryStore.swift */,
 			);
 			path = Persistence;
 			sourceTree = "<group>";
@@ -181,10 +228,23 @@
 			isa = PBXGroup;
 			children = (
 				2A0000020000000000000007 /* AppPersistenceStoresTests.swift */,
+				2B0000020000000000000004 /* CaptureFeasibilityTests.swift */,
+				2B0000020000000000000007 /* MeetingHistoryStoreTests.swift */,
+				2B0000020000000000000009 /* MeetingProcessingCoordinatorTests.swift */,
+				2B0000020000000000000010 /* MeetingNotesLiveEvalTests.swift */,
+				2B0000020000000000000002 /* MeetingNotesServiceTests.swift */,
 				2A0000020000000000000004 /* OpenAITranscriptionServiceTests.swift */,
 				A10000100000000000000002 /* UpdateControllerTests.swift */,
 			);
 			path = WisperTests;
+			sourceTree = "<group>";
+		};
+		C10000030000000000000001 /* WisperUITests */ = {
+			isa = PBXGroup;
+			children = (
+				C10000020000000000000002 /* WisperMeetingFlowUITests.swift */,
+			);
+			path = WisperUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -229,6 +289,24 @@
 			productReference = A10000100000000000000003 /* WisperTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		C10000040000000000000001 /* WisperUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C10000070000000000000001 /* Build configuration list for PBXNativeTarget "WisperUITests" */;
+			buildPhases = (
+				C10000050000000000000001 /* Sources */,
+				C10000050000000000000002 /* Frameworks */,
+				C10000050000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C10000060000000000000002 /* PBXTargetDependency */,
+			);
+			name = WisperUITests;
+			productName = WisperUITests;
+			productReference = C10000020000000000000003 /* WisperUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -243,6 +321,10 @@
 						CreatedOnToolsVersion = 26.4;
 					};
 					A10000400000000000000001 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 0B0000010000000000000040;
+					};
+					C10000040000000000000001 = {
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 0B0000010000000000000040;
 					};
@@ -267,6 +349,7 @@
 			targets = (
 				0B0000010000000000000040 /* Wisper */,
 				A10000400000000000000001 /* WisperTests */,
+				C10000040000000000000001 /* WisperUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -287,6 +370,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C10000050000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -300,15 +390,21 @@
 				8408C3BC2FDC20670079C698 /* OverlayWindowController.swift in Sources */,
 				2A0000010000000000000003 /* PermissionReadiness.swift in Sources */,
 				8408C3BE2FDC20670079C698 /* AudioPlaybackController.swift in Sources */,
+				2B0000010000000000000003 /* CaptureFeasibility.swift in Sources */,
 				2A0000010000000000000001 /* LocalLogger.swift in Sources */,
+				2B0000010000000000000008 /* MeetingProcessingCoordinator.swift in Sources */,
 				8408C3BF2FDC20670079C698 /* RecordingController.swift in Sources */,
 				8408C3C02FDC20670079C698 /* KeychainStore.swift in Sources */,
 				2A0000010000000000000006 /* AppModels.swift in Sources */,
+				2B0000010000000000000005 /* MeetingModels.swift in Sources */,
 				2A0000010000000000000007 /* AppPersistenceStores.swift in Sources */,
+				2B0000010000000000000006 /* MeetingHistoryStore.swift in Sources */,
 				8408C3C12FDC20670079C698 /* AppViewModel.swift in Sources */,
 				8408C3C22FDC20670079C698 /* ContentView.swift in Sources */,
 				8408C3C82FDC20670079C698 /* SystemAudioCaptureController.swift in Sources */,
 				A10000010000000000000002 /* UpdateController.swift in Sources */,
+				C10000010000000000000001 /* UITestFixtures.swift in Sources */,
+				2B0000010000000000000001 /* MeetingNotesService.swift in Sources */,
 				016A12292FED2A7900AA6B28 /* OpenAITranscriptionService.swift in Sources */,
 				016A122A2FED2A7900AA6B28 /* AudioChunker.swift in Sources */,
 			);
@@ -319,8 +415,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				2A0000010000000000000008 /* AppPersistenceStoresTests.swift in Sources */,
+				2B0000010000000000000004 /* CaptureFeasibilityTests.swift in Sources */,
+				2B0000010000000000000007 /* MeetingHistoryStoreTests.swift in Sources */,
+				2B0000010000000000000009 /* MeetingProcessingCoordinatorTests.swift in Sources */,
+				2B0000010000000000000010 /* MeetingNotesLiveEvalTests.swift in Sources */,
+				2B0000010000000000000002 /* MeetingNotesServiceTests.swift in Sources */,
 				2A0000010000000000000004 /* OpenAITranscriptionServiceTests.swift in Sources */,
 				A10000010000000000000003 /* UpdateControllerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000050000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000010000000000000002 /* WisperMeetingFlowUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,6 +440,11 @@
 			isa = PBXTargetDependency;
 			target = 0B0000010000000000000040 /* Wisper */;
 			targetProxy = A10000600000000000000001 /* PBXContainerItemProxy */;
+		};
+		C10000060000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0B0000010000000000000040 /* Wisper */;
+			targetProxy = C10000060000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -458,7 +572,7 @@
 				CODE_SIGN_ENTITLEMENTS = macos/Wisper.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -469,7 +583,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wisper.mac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -484,7 +598,7 @@
 				CODE_SIGN_ENTITLEMENTS = macos/Wisper.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -495,7 +609,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wisper.mac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -531,6 +645,32 @@
 			};
 			name = Release;
 		};
+		C10000080000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.wisper.mac.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = Wisper;
+			};
+			name = Debug;
+		};
+		C10000080000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.wisper.mac.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = Wisper;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -557,6 +697,15 @@
 			buildConfigurations = (
 				A10000800000000000000001 /* Debug */,
 				A10000800000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C10000070000000000000001 /* Build configuration list for PBXNativeTarget "WisperUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C10000080000000000000001 /* Debug */,
+				C10000080000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

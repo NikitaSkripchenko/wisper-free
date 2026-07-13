@@ -48,11 +48,29 @@ enum RecordingPhase: String {
 }
 
 @MainActor
-final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
+protocol MeetingRecording: AnyObject {
+    var isRecording: Bool { get }
+    var lastRecordingURL: URL? { get }
+    var lastCaptureArtifacts: SystemAudioCaptureArtifacts? { get }
+    var lastDurationSeconds: TimeInterval { get }
+    var canPause: Bool { get }
+    func start(captureMode: RecordingCaptureMode, audioSourceID: String?, outputDirectory: URL) async throws
+    func stop(discarding: Bool) async throws -> URL?
+    func pause()
+    func resume()
+    func discard() async throws
+    func restart(captureMode: RecordingCaptureMode, audioSourceID: String?, outputDirectory: URL) async throws
+    func importAudioFile(from sourceURL: URL, outputDirectory: URL) async throws -> (url: URL, durationSeconds: TimeInterval?)
+    func removeImportedAudio(_ audioURL: URL)
+}
+
+@MainActor
+final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate, MeetingRecording {
     @Published private(set) var phase: RecordingPhase = .idle
     @Published private(set) var elapsedSeconds: TimeInterval = 0
     @Published private(set) var lastRecordingURL: URL?
     @Published private(set) var lastDurationSeconds: TimeInterval = 0
+    @Published private(set) var lastCaptureArtifacts: SystemAudioCaptureArtifacts?
     @Published private(set) var audioSources: [AudioInputSource] = []
     @Published private(set) var lastRecordingSourceName = "Microphone"
 
@@ -69,7 +87,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     private var systemAudioCapture: SystemAudioCapturing?
 
     nonisolated static let supportedAudioFileExtensions = [
-        "m4a", "mp3", "wav", "mp4", "mpeg", "mpga", "flac", "ogg", "oga", "webm"
+        "m4a", "mp3", "wav", "mp4", "mpeg", "mpga", "webm"
     ]
 
     nonisolated static var supportedAudioFileTypesDescription: String {
@@ -105,7 +123,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         return Self.defaultAudioDevice()?.localizedName ?? "System Default"
     }
 
-    func start(captureMode: RecordingCaptureMode, audioSourceID: String?) async throws {
+    func start(captureMode: RecordingCaptureMode, audioSourceID: String?, outputDirectory: URL) async throws {
         guard phase == .idle else { return }
 
         if captureMode.usesMicrophone {
@@ -118,7 +136,11 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         refreshAudioSources()
 
         if captureMode.usesSystemAudio {
-            try await startSystemAudioCapture(captureMode: captureMode, audioSourceID: audioSourceID)
+            try await startSystemAudioCapture(
+                captureMode: captureMode,
+                audioSourceID: audioSourceID,
+                outputDirectory: outputDirectory
+            )
             return
         }
 
@@ -126,7 +148,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
             throw RecordingError.audioSourceUnavailable
         }
 
-        let urls = try Self.makeRecordingURLs()
+        let urls = try Self.makeRecordingURLs(in: outputDirectory)
         let session = AVCaptureSession()
         let input = try AVCaptureDeviceInput(device: device)
         let output = AVCaptureMovieFileOutput()
@@ -153,6 +175,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         pendingMovieURL = urls.movie
         pendingAudioURL = urls.audio
         discardWhenFinished = false
+        lastCaptureArtifacts = nil
         lastRecordingURL = urls.audio
         lastRecordingSourceName = device.localizedName
         startedAt = Date()
@@ -183,15 +206,19 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
 
         if let systemAudioCapture {
             do {
-                let url = try await systemAudioCapture.stop()
+                let artifacts = try await systemAudioCapture.stop()
                 cleanupAfterStop()
                 if discarding {
-                    try? FileManager.default.removeItem(at: url)
+                    for url in artifacts.allURLs {
+                        try? FileManager.default.removeItem(at: url)
+                    }
                     lastRecordingURL = nil
+                    lastCaptureArtifacts = nil
                     return nil
                 }
-                lastRecordingURL = url
-                return url
+                lastCaptureArtifacts = artifacts
+                lastRecordingURL = artifacts.transcriptionInputURL
+                return artifacts.transcriptionInputURL
             } catch {
                 cleanupAfterStop()
                 throw error
@@ -231,30 +258,40 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     func discard() async throws {
         _ = try await stop(discarding: true)
         lastRecordingURL = nil
+        lastCaptureArtifacts = nil
         lastDurationSeconds = 0
         elapsedSeconds = 0
     }
 
-    func restart(captureMode: RecordingCaptureMode, audioSourceID: String?) async throws {
+    func restart(captureMode: RecordingCaptureMode, audioSourceID: String?, outputDirectory: URL) async throws {
         try await discard()
-        try await start(captureMode: captureMode, audioSourceID: audioSourceID)
+        try await start(captureMode: captureMode, audioSourceID: audioSourceID, outputDirectory: outputDirectory)
     }
 
-    private func startSystemAudioCapture(captureMode: RecordingCaptureMode, audioSourceID: String?) async throws {
+    private func startSystemAudioCapture(
+        captureMode: RecordingCaptureMode,
+        audioSourceID: String?,
+        outputDirectory: URL
+    ) async throws {
         guard #available(macOS 15.0, *) else {
             throw RecordingError.systemAudioRequiresMacOS15
         }
 
-        let url = try Self.makeSystemRecordingURL()
+        let urls = try Self.makeSystemRecordingURLs(
+            includeMicrophone: captureMode == .microphoneAndSystemAudio,
+            directory: outputDirectory
+        )
         let capture = SystemAudioCaptureController()
         try await capture.start(
-            outputURL: url,
-            includeMicrophone: captureMode == .microphoneAndSystemAudio,
+            systemAudioURL: urls.systemAudio,
+            microphoneURL: urls.microphone,
+            transcriptionInputURL: urls.transcriptionInput,
             microphoneDeviceID: audioSourceID
         )
 
         systemAudioCapture = capture
-        lastRecordingURL = url
+        lastCaptureArtifacts = nil
+        lastRecordingURL = urls.transcriptionInput
         lastRecordingSourceName = captureMode.displayName
         startedAt = Date()
         pausedAt = nil
@@ -265,7 +302,10 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         startTimer()
     }
 
-    func importAudioFile(from sourceURL: URL) async throws -> (url: URL, durationSeconds: TimeInterval?) {
+    func importAudioFile(
+        from sourceURL: URL,
+        outputDirectory: URL
+    ) async throws -> (url: URL, durationSeconds: TimeInterval?) {
         guard phase == .idle else {
             throw RecordingError.importUnavailableWhileRecording
         }
@@ -274,7 +314,10 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
             throw RecordingError.unsupportedAudioFile
         }
 
-        let destinationURL = try Self.makeImportedAudioURL(originalName: sourceURL.lastPathComponent)
+        let destinationURL = try Self.makeImportedAudioURL(
+            originalName: sourceURL.lastPathComponent,
+            directory: outputDirectory
+        )
         let didAccess = sourceURL.startAccessingSecurityScopedResource()
         defer {
             if didAccess {
@@ -286,6 +329,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
         let durationSeconds = await Self.audioDuration(of: destinationURL)
+        lastCaptureArtifacts = nil
         lastRecordingURL = destinationURL
         lastDurationSeconds = durationSeconds ?? 0
         elapsedSeconds = durationSeconds ?? 0
@@ -486,51 +530,35 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         AVCaptureDevice.default(for: .audio)
     }
 
-    private static func makeRecordingURLs() throws -> (movie: URL, audio: URL) {
-        let directory = try recordingsDirectory()
-        let filename = "Recording-\(timestampForFilename())"
+    private static func makeRecordingURLs(in directory: URL) throws -> (movie: URL, audio: URL) {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return (
-            movie: directory.appending(path: "\(filename)-capture").appendingPathExtension("mov"),
-            audio: directory.appending(path: filename).appendingPathExtension("m4a")
+            movie: directory.appending(path: "microphone-capture.mov"),
+            audio: directory.appending(path: "microphone.m4a")
         )
     }
 
-    private static func makeSystemRecordingURL() throws -> URL {
-        let directory = try recordingsDirectory()
-        let filename = "Recording-\(timestampForFilename())"
-        return directory.appending(path: filename).appendingPathExtension("mp4")
+    private static func makeSystemRecordingURLs(
+        includeMicrophone: Bool,
+        directory: URL
+    ) throws -> (microphone: URL?, systemAudio: URL, transcriptionInput: URL) {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return (
+            microphone: includeMicrophone
+                ? directory.appending(path: "microphone.m4a")
+                : nil,
+            systemAudio: directory.appending(path: "system-audio.m4a"),
+            transcriptionInput: includeMicrophone
+                ? directory.appending(path: "transcription-input.m4a")
+                : directory.appending(path: "system-audio.m4a")
+        )
     }
 
-    private static func makeImportedAudioURL(originalName: String) throws -> URL {
-        let directory = try recordingsDirectory()
+    private static func makeImportedAudioURL(originalName: String, directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let originalURL = URL(filePath: originalName)
         let fileExtension = originalURL.pathExtension.lowercased()
-        let stem = sanitizedFileStem(originalURL.deletingPathExtension().lastPathComponent)
-        let filename = "Upload-\(timestampForFilename())-\(stem)"
-        return directory.appending(path: filename).appendingPathExtension(fileExtension)
-    }
-
-    private static func recordingsDirectory() throws -> URL {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "Wisper/Recordings", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
-    private static func timestampForFilename() -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-        return formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
-    }
-
-    private static func sanitizedFileStem(_ value: String) -> String {
-        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
-        let sanitized = value.unicodeScalars.map { scalar in
-            allowedCharacters.contains(scalar) ? String(scalar) : "-"
-        }
-        .joined()
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        return sanitized.isEmpty ? "Audio" : String(sanitized.prefix(80))
+        return directory.appending(path: "imported-source").appendingPathExtension(fileExtension)
     }
 
     private static func audioDuration(of audioURL: URL) async -> TimeInterval? {

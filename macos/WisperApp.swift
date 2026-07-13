@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 @main
@@ -8,10 +9,21 @@ struct WisperApp: App {
 
     init() {
         let appViewModel = AppViewModel()
+        let coordinator = appViewModel.meetingCoordinator
+        let safetyPublisher = Publishers.CombineLatest4(
+            coordinator.$bootstrapState,
+            coordinator.$activeMeetingID,
+            coordinator.$isCapturing,
+            coordinator.$isProcessing
+        )
+        .map { bootstrapState, activeMeetingID, isCapturing, isProcessing in
+            bootstrapState == .ready && activeMeetingID == nil && isCapturing == false && isProcessing == false
+        }
+        .eraseToAnyPublisher()
         _appViewModel = StateObject(wrappedValue: appViewModel)
         _updateController = StateObject(wrappedValue: UpdateController(
-            activityPublisher: appViewModel.$activity.eraseToAnyPublisher(),
-            initialActivity: appViewModel.activity,
+            safetyPublisher: safetyPublisher,
+            initiallySafeToTerminate: coordinator.canSafelyTerminate,
             setAppInstallPending: { [weak appViewModel] isPending in
                 appViewModel?.setUpdateInstallPending(isPending)
             }
@@ -22,6 +34,7 @@ struct WisperApp: App {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(appViewModel)
+                .environmentObject(appViewModel.meetingCoordinator)
                 .frame(minWidth: 920, minHeight: 620)
         }
         .windowStyle(.titleBar)
@@ -52,10 +65,32 @@ struct WisperApp: App {
             }
             .disabled(appViewModel.isProcessing)
 
+            if appViewModel.recorder.isRecording {
+                Text("Recording · \(appViewModel.recorder.elapsedDisplay)")
+            }
+
             Button(appViewModel.recorder.isPaused ? "Resume Recording" : "Pause Recording") {
                 appViewModel.recorder.isPaused ? appViewModel.resumeRecording() : appViewModel.pauseRecording()
             }
             .disabled(appViewModel.recorder.canPause == false || appViewModel.isProcessing)
+
+            if let record = activeMenuRecord {
+                Divider()
+                Text(record.title)
+                Text(record.displayState.statusText)
+                Button("Open Active Meeting") {
+                    appViewModel.openMeeting(id: record.id)
+                    showMainWindow()
+                }
+                .accessibilityLabel("Open active meeting, \(record.title), \(record.displayState.statusText)")
+            } else if let record = recentMenuRecord {
+                Divider()
+                Button("Open Meeting") {
+                    appViewModel.openMeeting(id: record.id)
+                    showMainWindow()
+                }
+                .accessibilityLabel("Open meeting, \(record.title), \(record.displayState.statusText)")
+            }
 
             Divider()
 
@@ -86,6 +121,7 @@ struct WisperApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appViewModel)
+                .environmentObject(appViewModel.meetingCoordinator)
                 .frame(width: 520)
         }
     }
@@ -96,6 +132,17 @@ struct WisperApp: App {
         }
 
         return "Start Recording"
+    }
+
+    private var activeMenuRecord: MeetingRecord? {
+        guard let id = appViewModel.meetingCoordinator.activeMeetingID else { return nil }
+        return appViewModel.meetingCoordinator.records.first(where: { $0.id == id })
+    }
+
+    private var recentMenuRecord: MeetingRecord? {
+        guard appViewModel.recorder.isRecording == false,
+              appViewModel.isProcessing == false else { return nil }
+        return appViewModel.meetingCoordinator.records.first
     }
 
     private var menuIconName: String {

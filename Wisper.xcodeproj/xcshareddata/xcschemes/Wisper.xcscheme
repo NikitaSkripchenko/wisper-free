@@ -32,12 +32,22 @@
       <Testables>
          <TestableReference
             skipped = "NO"
-            parallelizable = "YES">
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A10000400000000000000001"
                BuildableName = "WisperTests.xctest"
                BlueprintName = "WisperTests"
+               ReferencedContainer = "container:Wisper.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "C10000040000000000000001"
+               BuildableName = "WisperUITests.xctest"
+               BlueprintName = "WisperUITests"
                ReferencedContainer = "container:Wisper.xcodeproj">
             </BuildableReference>
          </TestableReference>

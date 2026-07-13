@@ -193,13 +193,8 @@ struct Transcript: Identifiable, Codable, Equatable {
     }
 }
 
-struct PendingUploadedAudio: Equatable {
-    let originalName: String
-    let audioURL: URL
-    let durationSeconds: TimeInterval?
-}
-
 enum AppActivity: Equatable {
+    case bootstrapping
     case idle
     case startingRecording
     case recording
@@ -209,7 +204,4 @@ enum AppActivity: Equatable {
     case restartingRecording
     case discardingRecording
 
-    var blocksUpdateInstallation: Bool {
-        self != .idle
-    }
 }
