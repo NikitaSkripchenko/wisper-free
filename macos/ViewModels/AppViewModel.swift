@@ -64,9 +64,8 @@ final class AppViewModel: ObservableObject {
         showInMenuBarOnly = settings.showInMenuBarOnly ?? false
         onboardingCompleted = settings.onboardingCompleted
 #if DEBUG
-        if ProcessInfo.processInfo.environment["WISPER_UI_TEST_ROOT"] != nil,
-           ProcessInfo.processInfo.environment["WISPER_UI_TEST_ONBOARDING"] != "1" {
-            onboardingCompleted = true
+        if ProcessInfo.processInfo.environment["WISPER_UI_TEST_ROOT"] != nil {
+            onboardingCompleted = ProcessInfo.processInfo.environment["WISPER_UI_TEST_ONBOARDING"] != "1"
         }
 #endif
         selectedSection = .record

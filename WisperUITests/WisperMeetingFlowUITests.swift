@@ -57,9 +57,9 @@ final class WisperMeetingFlowUITests: XCTestCase {
     func testOnboardingExplainsLocalAndOpenAIPrivacyBoundary() {
         launch(fixture: "empty", showOnboarding: true)
 
-        XCTAssertTrue(element(label: "Stays on your Mac").waitForExistence(timeout: 3))
-        XCTAssertTrue(element(label: "Sent to OpenAI when processing").exists)
-        XCTAssertTrue(element(label: "Wisper adds no meeting bot. Record only with everyone’s consent; recording laws vary by location.").exists)
+        XCTAssertTrue(app.staticTexts["Stays on your Mac"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Sent to OpenAI when processing"].exists)
+        XCTAssertTrue(app.staticTexts["Wisper adds no meeting bot. Record only with everyone’s consent; recording laws vary by location."].exists)
     }
 
     func testRecordIsCaptureOnlyAndEmptyHistoryOffersBothCreationPaths() {
@@ -152,12 +152,6 @@ final class WisperMeetingFlowUITests: XCTestCase {
 
     private func elementCount(identifier: String) -> Int {
         app.descendants(matching: .any).matching(identifier: identifier).count
-    }
-
-    private func element(label: String) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", label))
-            .firstMatch
     }
 
     private func selectTab(_ title: String) {
