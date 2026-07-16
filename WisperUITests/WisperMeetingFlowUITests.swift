@@ -57,9 +57,9 @@ final class WisperMeetingFlowUITests: XCTestCase {
     func testOnboardingExplainsLocalAndOpenAIPrivacyBoundary() {
         launch(fixture: "empty", showOnboarding: true)
 
-        XCTAssertTrue(app.staticTexts["Stays on your Mac"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Sent to OpenAI when processing"].exists)
-        XCTAssertTrue(app.staticTexts["Wisper adds no meeting bot. Record only with everyone’s consent; recording laws vary by location."].exists)
+        XCTAssertTrue(element(label: "Stays on your Mac").waitForExistence(timeout: 3))
+        XCTAssertTrue(element(label: "Sent to OpenAI when processing").exists)
+        XCTAssertTrue(element(label: "Wisper adds no meeting bot. Record only with everyone’s consent; recording laws vary by location.").exists)
     }
 
     func testRecordIsCaptureOnlyAndEmptyHistoryOffersBothCreationPaths() {
@@ -82,6 +82,7 @@ final class WisperMeetingFlowUITests: XCTestCase {
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 3))
         app.typeKey("f", modifierFlags: .command)
+        search.click()
         search.typeText("quarterly review")
         XCTAssertTrue(app.buttons["Clear Search"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["UI Test Planning Call"].exists)
@@ -153,8 +154,16 @@ final class WisperMeetingFlowUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).count
     }
 
+    private func element(label: String) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", label))
+            .firstMatch
+    }
+
     private func selectTab(_ title: String) {
-        let tab = app.segmentedControls.buttons[title]
+        let tab = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", title))
+            .firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 2))
         tab.click()
     }
