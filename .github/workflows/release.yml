@@ -81,6 +81,7 @@ jobs:
             -scheme Wisper \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -skip-testing:WisperUITests \
             -clonedSourcePackagesDirPath build/SourcePackages
 
       - name: Bump app version

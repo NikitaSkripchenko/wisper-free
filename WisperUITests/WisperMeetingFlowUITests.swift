@@ -21,6 +21,8 @@ final class WisperMeetingFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["UI Test Planning Call"].waitForExistence(timeout: 3))
         XCTAssertTrue(element(identifier: "meeting.notes").exists)
         XCTAssertGreaterThan(elementCount(identifier: "notes.item"), 0)
+        XCTAssertTrue(app.buttons["Regenerate Transcript"].exists)
+        XCTAssertTrue(app.buttons["Regenerate Notes"].exists)
         selectTab("Raw Transcript")
         XCTAssertTrue(element(identifier: "meeting.transcript").exists)
 

@@ -214,6 +214,34 @@ final class MeetingProcessingCoordinatorTests: XCTestCase {
         XCTAssertNotNil(retainedNotes)
     }
 
+    func testRegeneratingTranscriptRunsBothStagesAndReplacesArtifacts() async throws {
+        let fixture = try CoordinatorFixture()
+        let coordinator = MeetingOperationCoordinator(
+            recorder: FakeMeetingRecorder(outputURL: fixture.audioURL),
+            store: fixture.store,
+            transcriber: SuccessThenSuccessTranscriber(),
+            notesGenerator: StubMeetingNotesGenerator()
+        )
+        await coordinator.bootstrap()
+        try await coordinator.startCapture(mode: .microphone, audioSourceID: nil)
+        try await coordinator.stopCaptureAndProcess(apiKey: "key", chunkSeconds: nil)
+        try await waitUntil { coordinator.canSafelyTerminate }
+        let original = try XCTUnwrap(coordinator.records.first)
+
+        try await coordinator.retryTranscription(meetingID: original.id, apiKey: "key", chunkSeconds: nil)
+        try await waitUntil { coordinator.canSafelyTerminate }
+
+        let regenerated = try XCTUnwrap(coordinator.records.first)
+        XCTAssertEqual(regenerated.transcription.attemptCount, 2)
+        XCTAssertEqual(regenerated.notes.attemptCount, 2)
+        XCTAssertNotEqual(regenerated.transcriptArtifact, original.transcriptArtifact)
+        XCTAssertNotEqual(regenerated.lastValidNotesArtifact, original.lastValidNotesArtifact)
+        let transcript = try await coordinator.loadTranscript(for: regenerated)
+        let notes = try await coordinator.loadNotes(for: regenerated)
+        XCTAssertEqual(transcript, "Second transcript")
+        XCTAssertEqual(notes?.summaryPoints.first?.evidence, "Second transcript")
+    }
+
     func testStaleProcessingRecordCanRetryWithoutRelaunch() async throws {
         let fixture = try CoordinatorFixture()
         let coordinator = MeetingOperationCoordinator(
@@ -518,6 +546,20 @@ private actor SuccessThenFailureTranscriber: MeetingTranscribing {
             return TranscriptionResult(mode: .plain, text: "First transcript")
         }
         throw StubTranscriptionError.failed
+    }
+}
+
+private actor SuccessThenSuccessTranscriber: MeetingTranscribing {
+    private var callCount = 0
+
+    func transcribe(
+        audioURL: URL,
+        apiKey: String,
+        chunkSeconds: Int?,
+        progress: (@MainActor (TranscriptionProgress) -> Void)?
+    ) async throws -> TranscriptionResult {
+        callCount += 1
+        return TranscriptionResult(mode: .plain, text: callCount == 1 ? "First transcript" : "Second transcript")
     }
 }
 

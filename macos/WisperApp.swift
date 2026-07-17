@@ -39,6 +39,8 @@ struct WisperApp: App {
         }
         .windowStyle(.titleBar)
         .commands {
+            CommandGroup(replacing: .newItem) {}
+
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton(updateController: updateController)
             }

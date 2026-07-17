@@ -26,12 +26,12 @@ Native app features now include:
 - Configurable system-wide recording shortcut, defaulting to `Command Shift Space`.
 - Floating native overlay while recording, with Discard, Start Over, Pause/Resume, and Stop controls.
 - Separate microphone and system-audio capture on macOS 15+, plus a derived transcription mix when both sources are enabled.
-- Automatic capture/import → transcription → grounded meeting-note generation, with stage-specific progress and retry actions.
+- Automatic capture/import → transcription → grounded meeting-note generation, with stage-specific progress plus independent transcript and note regeneration.
 - First-run onboarding for API key, microphone, and screen/system audio permissions.
 - Local JSONL diagnostics under Application Support, with a Settings action to reveal the log file.
 - Byte-safe native chunked transcription for longer recordings, enabled by default at 480-second chunks and configurable in Settings. Uploads stay below a 24 MiB safety ceiling and use at most two concurrent requests.
 - Grounded notes with Summary, Decisions, Action Items, and Open Questions. Every generated item must carry exact transcript evidence; unsupported owners and due dates are rejected.
-- History actions for stage-specific retry, audio playback, reveal in Finder, copy notes, copy raw transcript, and removal.
+- History actions for stage-specific retry, seekable audio playback with pause and 15-second skipping, reveal in Finder, copy notes, copy raw transcript, and removal.
 - Crash-recoverable per-meeting JSON records and attempt-scoped transcript/note artifacts under Application Support. Legacy transcript history is migrated once; damaged records are quarantined without blocking healthy history.
 
 Source layout:

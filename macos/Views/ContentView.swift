@@ -235,10 +235,6 @@ private struct RecordView: View {
                     Text(appViewModel.statusMessage)
                         .foregroundStyle(.secondary)
 
-                    Text("Capture: \(appViewModel.captureModeDescription) • Source: \(appViewModel.activeAudioSourceName)")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
-
                     if appViewModel.recorder.isRecording {
                         Label("Recording in progress", systemImage: "record.circle.fill")
                             .font(.headline)
@@ -706,13 +702,18 @@ private struct MeetingDetailView: View {
                     Button("Retry Transcription") {
                         Task { await appViewModel.retryTranscription(for: record) }
                     }
-                    .disabled(activeFailure?.isRetryable == false)
-                } else if record.transcription.status == .completed,
-                          record.notes.status == .failed || record.lastValidNotesArtifact != nil {
-                    Button(record.lastValidNotesArtifact == nil ? "Retry Notes" : "Regenerate Notes") {
-                        Task { await appViewModel.retryNotes(for: record) }
+                    .disabled(record.transcription.failure?.isRetryable == false)
+                } else if record.transcription.status == .completed {
+                    Button("Regenerate Transcript") {
+                        Task { await appViewModel.retryTranscription(for: record) }
                     }
-                    .disabled(activeFailure?.isRetryable == false)
+
+                    if record.notes.status == .failed || record.lastValidNotesArtifact != nil {
+                        Button(record.lastValidNotesArtifact == nil ? "Retry Notes" : "Regenerate Notes") {
+                            Task { await appViewModel.retryNotes(for: record) }
+                        }
+                        .disabled(record.notes.failure?.isRetryable == false)
+                    }
                 }
                 if coordinator.activeMeetingID == record.id {
                     Button("Cancel", role: .destructive) { coordinator.cancelProcessing() }
@@ -725,7 +726,7 @@ private struct MeetingDetailView: View {
                         .disabled(notes == nil)
                     Button("Copy Raw Transcript") { Task { await appViewModel.copyMeetingTranscript(record) } }
                         .disabled(transcript == nil)
-                    Button("Play or Stop Audio") { Task { await appViewModel.playMeetingAudio(record) } }
+                    Button("Play or Pause Audio") { Task { await appViewModel.playMeetingAudio(record) } }
                     Button("Reveal Audio in Finder") { Task { await appViewModel.revealMeetingAudio(record) } }
                     Divider()
                     Button("Remove Meeting", role: .destructive) { confirmRemoval = true }
@@ -747,9 +748,6 @@ private struct MeetingDetailView: View {
                 ScrollView {
                     if let notes {
                         VStack(alignment: .leading, spacing: 18) {
-                            Text("AI-generated — verify against the transcript")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                             MeetingNotesSection(title: "Summary", items: notes.summaryPoints)
                             MeetingNotesSection(title: "Decisions", items: notes.decisions)
                             MeetingActionItemsSection(items: notes.actionItems)
@@ -781,22 +779,11 @@ private struct MeetingDetailView: View {
                 .allowsHitTesting(selectedTab == .transcript)
                 .accessibilityHidden(selectedTab != .transcript)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Label(record.captureMode.displayName, systemImage: "waveform")
-                        if let duration = record.durationSeconds {
-                            LabeledContent(
-                                "Duration",
-                                value: String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60)
-                            )
-                        }
-                        HStack {
-                            Button("Play or Stop") { Task { await appViewModel.playMeetingAudio(record) } }
-                            Button("Reveal in Finder") { Task { await appViewModel.revealMeetingAudio(record) } }
-                        }
-                    }
-                    .padding(20)
-                }
+                MeetingAudioPlayerView(
+                    player: appViewModel.audioPlayer,
+                    record: record,
+                    isVisible: selectedTab == .audio
+                )
                 .accessibilityIdentifier("meeting.audio")
                 .opacity(selectedTab == .audio ? 1 : 0)
                 .allowsHitTesting(selectedTab == .audio)
@@ -968,6 +955,84 @@ private struct MeetingDetailView: View {
             .fill(.quaternary)
             .frame(maxWidth: 22)
             .frame(height: 1)
+    }
+}
+
+private struct MeetingAudioPlayerView: View {
+    @EnvironmentObject private var appViewModel: AppViewModel
+    @ObservedObject var player: AudioPlaybackController
+    let record: MeetingRecord
+    let isVisible: Bool
+
+    @State private var audioURL: URL?
+    @State private var isLoading = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Label("Meeting audio", systemImage: "waveform")
+                .font(.headline)
+
+            if isLoading {
+                ProgressView("Loading audio…")
+            } else if let audioURL, player.loadedURL == audioURL {
+                VStack(spacing: 10) {
+                    Slider(
+                        value: Binding(
+                            get: { player.currentTime },
+                            set: { player.seek(to: $0) }
+                        ),
+                        in: 0...max(player.duration, 0.1)
+                    )
+                    .disabled(player.duration <= 0)
+
+                    HStack {
+                        Text(player.elapsedText)
+                        Spacer()
+                        Text(player.durationText)
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 14) {
+                    Button { player.skip(by: -15) } label: {
+                        Label("Back 15 seconds", systemImage: "gobackward.15")
+                    }
+                    .disabled(player.currentTime <= 0)
+
+                    Button {
+                        try? player.togglePlayback()
+                    } label: {
+                        Label(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.fill" : "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button { player.skip(by: 15) } label: {
+                        Label("Forward 15 seconds", systemImage: "goforward.15")
+                    }
+                    .disabled(player.currentTime >= player.duration)
+
+                    Button("Stop") { player.stop() }
+                        .disabled(player.currentTime == 0 && player.isPlaying == false)
+                }
+            } else {
+                ContentUnavailableView(
+                    "Audio Unavailable",
+                    systemImage: "speaker.slash",
+                    description: Text("This audio cannot be played in Wisper.")
+                )
+            }
+
+            Button("Reveal in Finder") { Task { await appViewModel.revealMeetingAudio(record) } }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: isVisible) {
+            guard isVisible else { return }
+            isLoading = true
+            audioURL = await appViewModel.prepareMeetingAudio(record)
+            isLoading = false
+        }
     }
 }
 

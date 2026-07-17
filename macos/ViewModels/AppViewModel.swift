@@ -625,6 +625,17 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func prepareMeetingAudio(_ record: MeetingRecord) async -> URL? {
+        do {
+            let url = try await meetingCoordinator.audioURL(for: record)
+            try audioPlayer.load(url: url)
+            return url
+        } catch {
+            presentMeetingError(error, for: record.id, action: .playAudio)
+            return nil
+        }
+    }
+
     func retryMeetingBootstrap() async {
         await meetingCoordinator.bootstrap()
         if case .failed(let message) = meetingCoordinator.bootstrapState {
