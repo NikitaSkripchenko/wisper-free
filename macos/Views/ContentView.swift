@@ -1225,39 +1225,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Chunking") {
-                Toggle("Chunk long recordings", isOn: Binding(
-                    get: { appViewModel.chunkingEnabled },
-                    set: { appViewModel.saveChunkingSettings(enabled: $0) }
-                ))
-
-                Stepper(value: Binding(
-                    get: { appViewModel.chunkSeconds },
-                    set: { appViewModel.saveChunkingSettings(seconds: $0) }
-                ), in: 60...3_600, step: 60) {
-                    LabeledContent("Chunk length", value: "\(appViewModel.chunkSeconds) seconds")
-                }
-                .disabled(appViewModel.chunkingEnabled == false)
-
-                Text("When a recording is longer than this, Wisper splits it into local .m4a chunks, transcribes each chunk, then stitches the transcript.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Privacy") {
-                LabeledContent("Stays on your Mac") {
-                    Text("Recordings, transcripts, notes, settings, and history")
-                        .foregroundStyle(.secondary)
-                }
-                LabeledContent("Sent to OpenAI when processing") {
-                    Text("Selected meeting audio and transcript content")
-                        .foregroundStyle(.secondary)
-                }
-                Text("Your API key stays in Keychain. Wisper adds no meeting bot; recording consent remains your responsibility.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             Section("Diagnostics") {
                 LabeledContent("Local log", value: appViewModel.localLogFileURL.path)
 

@@ -232,12 +232,15 @@ actor MeetingProcessingPipeline {
             try await store.saveRecord(record)
             await onUpdate(record)
             let attempt = stage == .transcription ? record.transcription : record.notes
+            let nsError = error as NSError
             logger.warning("Meeting stage failed", metadata: [
                 "meetingID": meetingID.uuidString,
                 "stage": stage == .transcription ? "transcription" : "notes",
                 "attempt": String(attempt.attemptCount),
-                "failureCategory": failure.category.rawValue
-            ])
+                "failureCategory": failure.category.rawValue,
+                "errorDomain": nsError.domain,
+                "errorCode": String(nsError.code)
+            ], error: error)
         } catch {
             if var record = try? await store.loadRecord(id: meetingID) {
                 switch stage {
