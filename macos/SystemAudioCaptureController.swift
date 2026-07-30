@@ -31,6 +31,7 @@ protocol SystemAudioCapturing: AnyObject {
 @available(macOS 15.0, *)
 @MainActor
 final class SystemAudioCaptureController: NSObject, SystemAudioCapturing, SCStreamDelegate {
+    var onMicrophoneLevel: (@Sendable (Float) -> Void)?
     private var stream: SCStream?
     private var streamOutput: SystemAudioStreamOutput?
     private var outputURLs: SystemAudioOutputURLs?
@@ -93,7 +94,11 @@ final class SystemAudioCaptureController: NSObject, SystemAudioCapturing, SCStre
             configuration.microphoneCaptureDeviceID = microphoneDeviceID
         }
 
-        let output = try SystemAudioStreamOutput(urls: urls, includeMicrophone: includeMicrophone)
+        let output = try SystemAudioStreamOutput(
+            urls: urls,
+            includeMicrophone: includeMicrophone,
+            onMicrophoneLevel: onMicrophoneLevel
+        )
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: output.queue)
         if includeMicrophone {
@@ -332,6 +337,7 @@ private final class SystemAudioStreamOutput: NSObject, SCStreamOutput, @unchecke
 
     private let microphoneWriter: RealtimeAudioWriter?
     private let systemWriter: RealtimeAudioWriter
+    private let onMicrophoneLevel: (@Sendable (Float) -> Void)?
     private let lock = NSLock()
     private var firstMicrophonePTS: CMTime?
     private var firstSystemPTS: CMTime?
@@ -339,8 +345,13 @@ private final class SystemAudioStreamOutput: NSObject, SCStreamOutput, @unchecke
     private var clippedFrames = 0
     private var totalFrames = 0
 
-    init(urls: SystemAudioOutputURLs, includeMicrophone: Bool) throws {
+    init(
+        urls: SystemAudioOutputURLs,
+        includeMicrophone: Bool,
+        onMicrophoneLevel: (@Sendable (Float) -> Void)?
+    ) throws {
         systemWriter = try RealtimeAudioWriter(outputURL: urls.systemAudio, channels: 2)
+        self.onMicrophoneLevel = onMicrophoneLevel
         if includeMicrophone, let microphoneURL = urls.microphone {
             microphoneWriter = try RealtimeAudioWriter(outputURL: microphoneURL, channels: 1)
         } else {
@@ -371,6 +382,7 @@ private final class SystemAudioStreamOutput: NSObject, SCStreamOutput, @unchecke
                 lock.withLock {
                     if firstMicrophonePTS == nil { firstMicrophonePTS = pts }
                 }
+                onMicrophoneLevel?(MicrophoneLevelMeter.peakAmplitude(in: sampleBuffer))
                 try microphoneWriter?.append(sampleBuffer)
             default:
                 break

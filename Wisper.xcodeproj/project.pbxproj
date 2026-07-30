@@ -27,6 +27,7 @@
 		2B0000010000000000000008 /* MeetingProcessingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000008 /* MeetingProcessingCoordinator.swift */; };
 		2B0000010000000000000009 /* MeetingProcessingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000009 /* MeetingProcessingCoordinatorTests.swift */; };
 		2B0000010000000000000010 /* MeetingNotesLiveEvalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000010 /* MeetingNotesLiveEvalTests.swift */; };
+		D10000010000000000000001 /* MicrophoneLevelMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000020000000000000001 /* MicrophoneLevelMeter.swift */; };
 		8408C3BA2FDC20670079C698 /* ShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B82FDC20670079C698 /* ShortcutManager.swift */; };
 		8408C3BB2FDC20670079C698 /* WisperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B92FDC20670079C698 /* WisperApp.swift */; };
 		8408C3BC2FDC20670079C698 /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B62FDC20670079C698 /* OverlayWindowController.swift */; };
@@ -83,6 +84,7 @@
 		2B0000020000000000000008 /* MeetingProcessingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingCoordinator.swift; sourceTree = "<group>"; };
 		2B0000020000000000000009 /* MeetingProcessingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingCoordinatorTests.swift; sourceTree = "<group>"; };
 		2B0000020000000000000010 /* MeetingNotesLiveEvalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesLiveEvalTests.swift; sourceTree = "<group>"; };
+		D10000020000000000000001 /* MicrophoneLevelMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneLevelMeter.swift; sourceTree = "<group>"; };
 		8408C3AE2FDC20670079C698 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		8408C3AF2FDC20670079C698 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8408C3B12FDC20670079C698 /* AudioPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackController.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				8408C3B42FDC20670079C698 /* KeychainStore.swift */,
 				2A0000020000000000000001 /* LocalLogger.swift */,
 				2B0000020000000000000008 /* MeetingProcessingCoordinator.swift */,
+				D10000020000000000000001 /* MicrophoneLevelMeter.swift */,
 				2A0000030000000000000003 /* Models */,
 				2A0000020000000000000003 /* PermissionReadiness.swift */,
 				2A0000030000000000000006 /* Persistence */,
@@ -393,6 +396,7 @@
 				2B0000010000000000000003 /* CaptureFeasibility.swift in Sources */,
 				2A0000010000000000000001 /* LocalLogger.swift in Sources */,
 				2B0000010000000000000008 /* MeetingProcessingCoordinator.swift in Sources */,
+				D10000010000000000000001 /* MicrophoneLevelMeter.swift in Sources */,
 				8408C3BF2FDC20670079C698 /* RecordingController.swift in Sources */,
 				8408C3C02FDC20670079C698 /* KeychainStore.swift in Sources */,
 				2A0000010000000000000006 /* AppModels.swift in Sources */,

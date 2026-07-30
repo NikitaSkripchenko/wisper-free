@@ -10,6 +10,8 @@ struct RecordingOverlayState: Equatable {
     var canStop: Bool
     var canDiscard: Bool
     var canRestart: Bool
+    var microphoneLevels: [CGFloat]
+    var showsMicrophoneWaveform: Bool
 }
 
 @MainActor
@@ -80,6 +82,8 @@ final class OverlayWindowController {
 }
 
 private struct RecordingOverlayView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let state: RecordingOverlayState
     let controller: OverlayWindowController
 
@@ -97,6 +101,10 @@ private struct RecordingOverlayView: View {
                 Text(state.elapsedText)
                     .font(.system(.headline, design: .rounded, weight: .semibold))
                     .monospacedDigit()
+
+                if state.showsMicrophoneWaveform {
+                    MicrophoneWaveform(levels: state.microphoneLevels, reduceMotion: reduceMotion)
+                }
             }
 
             Spacer(minLength: 4)
@@ -169,6 +177,25 @@ private struct RecordingOverlayView: View {
         if state.canResume { return .orange }
         if state.state.lowercased().contains("processing") { return .blue }
         return .red
+    }
+}
+
+private struct MicrophoneWaveform: View {
+    let levels: [CGFloat]
+    let reduceMotion: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 2) {
+            ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
+                Capsule()
+                    .fill(.red)
+                    .frame(width: 2, height: 4 + level * 14)
+            }
+        }
+        .frame(height: 18, alignment: .center)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Microphone level active")
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: levels)
     }
 }
 

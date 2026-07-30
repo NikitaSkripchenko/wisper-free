@@ -2,6 +2,42 @@ import XCTest
 @testable import Wisper
 
 final class CaptureFeasibilityTests: XCTestCase {
+    func testLevelMeterKeepsAStableBaselineForSilence() {
+        var meter = MicrophoneLevelMeter(sampleCount: 3)
+
+        meter.record(amplitude: 0)
+
+        XCTAssertEqual(meter.levels.count, 3)
+        XCTAssertTrue(meter.levels.allSatisfy { $0 > 0 })
+    }
+
+    func testLevelMeterKeepsOnlyTheMostRecentSamples() {
+        var meter = MicrophoneLevelMeter(sampleCount: 3)
+
+        [0.1, 0.4, 0.8, 0.2].forEach { meter.record(amplitude: Float($0)) }
+
+        XCTAssertEqual(meter.levels.count, 3)
+        XCTAssertGreaterThan(meter.levels[1], meter.levels[2])
+    }
+
+    func testLevelMeterResetRestoresBaselineHistory() {
+        var meter = MicrophoneLevelMeter(sampleCount: 3)
+        meter.record(amplitude: 1)
+
+        meter.reset()
+
+        XCTAssertEqual(meter.levels, Array(repeating: meter.minimumLevel, count: 3))
+    }
+
+    func testLevelMeterNormalizes24BitIntegerSamples() {
+        XCTAssertEqual(
+            MicrophoneLevelMeter.normalizedAmplitude(integerSample: 4_194_304, bitDepth: 24),
+            0.5,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(MicrophoneLevelMeter.normalizedAmplitude(integerSample: -8_388_608, bitDepth: 24), 1)
+    }
+
     func testMetricsPassWithinReleaseReferenceThresholds() {
         let metrics = CaptureFeasibilityMetrics(
             microphoneStartTime: 10,
