@@ -517,36 +517,14 @@ platform :mac do
     UI.success("Bumped #{APP_NAME} from #{current_version} (#{current_build}) to #{new_version} (#{new_build}).")
   end
 
-  desc "Build a signed, notarized DMG and upload it to GitHub Releases"
-  lane :release do |options|
-    tag_name = release_tag(options)
+  desc "Deprecated: publish stable releases by pushing an annotated version tag"
+  lane :release do |_options|
+    UI.user_error!(<<~ERROR)
+      The mac release lane is disabled to prevent it racing the tag-triggered GitHub Actions release workflow.
 
-    ensure_clean_git_tree!
-    validate_github_token!
-    ensure_head_commit_exists_on_github!
-    setup_signing
-    app_path = build_signed_app
-    verify_app_signature(app_path: app_path)
-
-    dmg_path = package_dmg(app_path: app_path, tag_name: tag_name)
-    sign_dmg(dmg_path: dmg_path)
-    notarize_dmg(dmg_path: dmg_path)
-    verify_dmg(dmg_path: dmg_path)
-    appcast_path = generate_appcast!(
-      dmg_path: dmg_path,
-      tag_name: tag_name,
-      release_notes: options[:release_notes]
-    )
-
-    ensure_release_tag!(tag_name)
-    push_release_tag!(tag_name)
-
-    upload_to_github_release(
-      dmg_path: dmg_path,
-      appcast_path: appcast_path,
-      tag_name: tag_name,
-      release_notes: options[:release_notes]
-    )
+      Commit the version change, push an annotated vX.Y.Z tag, and let the Release workflow publish it.
+      Use `fastlane mac build_dmg tag:vX.Y.Z` only for a local signed/notarized DMG.
+    ERROR
   end
 
   desc "Build a signed, notarized DMG without uploading it"

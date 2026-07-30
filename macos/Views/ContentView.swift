@@ -290,11 +290,6 @@ private struct RecordView: View {
                                 .pickerStyle(.menu)
                                 .frame(maxWidth: .infinity)
                                 .disabled(appViewModel.captureMode.usesMicrophone == false || appViewModel.recorder.isRecording || appViewModel.isProcessing)
-
-                                Button("Refresh") {
-                                    appViewModel.refreshAudioSources()
-                                }
-                                .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
                             }
                         }
                     }
@@ -1166,10 +1161,6 @@ struct SettingsView: View {
                 HStack {
                     LabeledContent("Selected", value: appViewModel.selectedAudioSourceName)
                     Spacer()
-                    Button("Refresh") {
-                        appViewModel.refreshAudioSources()
-                    }
-                    .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
                 }
 
                 Text("Choose the microphone Wisper should use when the capture mode includes microphone audio. Existing recordings keep their original source.")

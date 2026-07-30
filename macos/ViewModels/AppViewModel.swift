@@ -417,11 +417,6 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func refreshAudioSources() {
-        recorder.refreshAudioSources()
-        statusMessage = "Audio sources refreshed"
-    }
-
     func saveAudioSource(_ sourceID: String?) {
         selectedAudioSourceID = sourceID?.isEmpty == false ? sourceID : nil
         do {
@@ -759,7 +754,9 @@ final class AppViewModel: ObservableObject {
             canResume: recorder.phase == .paused && isProcessing == false,
             canStop: recorder.phase == .recording || recorder.phase == .paused,
             canDiscard: recorder.phase == .recording || recorder.phase == .paused,
-            canRestart: recorder.phase == .recording || recorder.phase == .paused
+            canRestart: recorder.phase == .recording || recorder.phase == .paused,
+            microphoneLevels: recorder.microphoneLevels,
+            showsMicrophoneWaveform: recorder.phase == .recording && captureMode.usesMicrophone && isProcessing == false
         )
     }
 

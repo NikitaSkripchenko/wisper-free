@@ -25,6 +25,7 @@ Native app features now include:
 - Signed over-the-air updates through Sparkle 2.9.3, with automatic daily checks and explicit Install/Later/Skip prompts.
 - Configurable system-wide recording shortcut, defaulting to `Command Shift Space`.
 - Floating native overlay while recording, with Discard, Start Over, Pause/Resume, and Stop controls.
+- Floating recording overlay with real microphone-level waveform feedback.
 - Separate microphone and system-audio capture on macOS 15+, plus a derived transcription mix when both sources are enabled.
 - Automatic capture/import → transcription → grounded meeting-note generation, with stage-specific progress plus independent transcript and note regeneration.
 - First-run onboarding for API key, microphone, and screen/system audio permissions.
@@ -88,11 +89,21 @@ The release-reference capture thresholds are source start delta ≤100 ms, decod
 
 ## Releases
 
-Release builds are automated with GitHub Actions on every non-release commit pushed to `main`, including merged PRs. The workflow runs the unit tests, bumps the app patch version by default, builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, generates an EdDSA-signed Sparkle appcast, and commits the version bump back to `main`. It uploads the DMG and appcast to a draft GitHub Release, verifies both assets, then publishes the release atomically.
+GitHub Actions has two independent workflows:
 
-The workflow also supports manual runs from the GitHub Actions tab. Use `patch`, `minor`, or `major` to choose the bump type, or `none` to rebuild and republish the current checked-in version after a failed release attempt.
+- **CI** runs on pull requests targeting `main` and on commits pushed to `main`. It resolves Swift packages, runs the macOS unit tests, builds an unsigned debug app, and retains test results and the app artifact for seven days. It never changes a version, creates a tag, or publishes a release.
+- **Release** runs only when an annotated `vX.Y.Z` tag is pushed. It checks that the tag matches `CFBundleShortVersionString` and every Xcode `MARKETING_VERSION`, runs unit tests, builds a Developer ID signed and notarized DMG, generates an EdDSA-signed Sparkle appcast, and publishes both assets atomically to GitHub Releases.
 
-For a public repo on a free GitHub account, this uses the GitHub-hosted `macos-26` runner and the built-in `GITHUB_TOKEN`; no paid runner or personal access token is required. In repository settings, enable Actions workflow permissions for `Read and write permissions` so the workflow can push the version bump commit, create tags, and create releases. If `main` is branch-protected against direct pushes, the default `GITHUB_TOKEN` may be blocked; use a ruleset/bypass that permits the workflow's release commit or switch to a release-PR flow instead.
+To ship a stable release, update the marketing version and an incremented numeric build number in a release PR, merge it after CI passes, then tag that exact commit and push the tag. The Release workflow rejects tags outside `main`, mismatched Xcode build numbers, and build numbers that do not advance beyond the previous release:
+
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+Use the Release workflow's **Run workflow** action only to rebuild an existing, unpublished annotated tag after a failed run. Published releases and tags are immutable; fix a published release by shipping a higher version and build number.
+
+For a public repo on a free GitHub account, this uses the GitHub-hosted `macos-26` runner and the built-in `GITHUB_TOKEN`; no paid runner or personal access token is required. In repository settings, enable Actions workflow permissions for `Read and write permissions` so the release workflow can create and publish GitHub Releases. Protect `main` by requiring the `CI / Test and build` status check before merges; do not require the Release workflow.
 
 Required GitHub repository secrets:
 - `APPLE_ID`: Apple Developer account email used for notarization.
@@ -116,7 +127,7 @@ https://github.com/NikitaSkripchenko/wisper-free/releases/latest/download/appcas
 
 The first release containing Sparkle must still be installed manually because older versions cannot discover the appcast. Subsequent versions can update in place. If Wisper is preparing history, recording, importing, transcribing, or generating notes when installation is requested, relaunch waits until the meeting coordinator confirms there is no capture or persisted work in flight.
 
-Published releases are immutable. A failed draft can be rebuilt with the manual `none` option, but a faulty published build must be fixed by shipping a higher `CFBundleVersion`; do not replace a live DMG or appcast under an existing version.
+Published releases are immutable. A failed draft can be rebuilt by manually running the Release workflow for the same tag, but a faulty published build must be fixed by shipping a higher `CFBundleVersion`; do not replace a live DMG or appcast under an existing version.
 
 The private update key was generated in the local Keychain under account `com.wisper.mac`. Export an encrypted backup on a trusted Mac with the `generate_keys` binary from the resolved Sparkle package:
 
@@ -128,7 +139,7 @@ build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys \
 
 Never commit or attach that exported file to a release. If an update key or Developer ID certificate must be rotated, rotate only one of them in a given release.
 
-Local release builds are still available with Fastlane. The release lane builds a Developer ID signed app, packages it into a signed and notarized DMG, staples notarization, creates and pushes the git tag, and uploads the DMG to the matching GitHub Release.
+Local signed and notarized DMG builds remain available with Fastlane. GitHub Actions is the only stable-release publisher: the `mac release` lane is disabled so it cannot race the tag-triggered workflow.
 
 Required local Fastlane credentials:
 - `APPLE_ID`: Apple Developer account email used for notarization.
@@ -168,19 +179,4 @@ bundle install
 bundle exec fastlane mac build_dmg tag:v1.0.0
 ```
 
-Build, notarize, and upload the DMG to GitHub Releases:
-
-```bash
-cd /Users/mykytaskrypchenko/Projects/wisper-public
-bundle config set path vendor/bundle
-bundle install
-bundle exec fastlane mac release tag:v1.0.0
-```
-
-The `mac release` lane requires a clean git working tree before it builds. Commit your changes first so the pushed tag points at the exact source used for the DMG.
-
-The commit you are releasing must already exist on GitHub before running `mac release`. Fastlane uses `GITHUB_TOKEN` to publish the tag and release asset, but it does not push branch commits.
-
-Fastlane may resume an existing draft release for the tag. It refuses to modify a published release; publish a higher app version and build number instead.
-
-Fastlane publishes git tags through the GitHub API using `GITHUB_TOKEN`, so local SSH access to `origin` is not required.
+To publish a stable release, commit and merge the version change, then push an annotated version tag as shown above. The Release workflow refuses to publish when the tag, `CFBundleShortVersionString`, and Xcode marketing versions do not agree.

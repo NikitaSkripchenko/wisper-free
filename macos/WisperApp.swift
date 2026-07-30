@@ -101,11 +101,6 @@ struct WisperApp: App {
                 showMainWindow()
             }
 
-            Button("Refresh Audio Sources") {
-                appViewModel.refreshAudioSources()
-            }
-            .disabled(appViewModel.recorder.isRecording || appViewModel.isProcessing)
-
             Divider()
 
             CheckForUpdatesButton(updateController: updateController)

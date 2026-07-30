@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 
@@ -65,7 +66,7 @@ protocol MeetingRecording: AnyObject {
 }
 
 @MainActor
-final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate, MeetingRecording {
+final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate, AVCaptureAudioDataOutputSampleBufferDelegate, MeetingRecording {
     @Published private(set) var phase: RecordingPhase = .idle
     @Published private(set) var elapsedSeconds: TimeInterval = 0
     @Published private(set) var lastRecordingURL: URL?
@@ -73,6 +74,8 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     @Published private(set) var lastCaptureArtifacts: SystemAudioCaptureArtifacts?
     @Published private(set) var audioSources: [AudioInputSource] = []
     @Published private(set) var lastRecordingSourceName = "Microphone"
+
+    private(set) var microphoneLevels: [CGFloat] = MicrophoneLevelMeter().levels
 
     private var captureSession: AVCaptureSession?
     private var movieOutput: AVCaptureMovieFileOutput?
@@ -85,6 +88,45 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     private var discardWhenFinished = false
     private var stopContinuation: CheckedContinuation<URL?, Error>?
     private var systemAudioCapture: SystemAudioCapturing?
+    private var microphoneLevelMeter = MicrophoneLevelMeter()
+    private let microphoneMeteringQueue = DispatchQueue(label: "com.wisper.capture.microphone-metering", qos: .userInteractive)
+    nonisolated(unsafe) private var audioSourceObservationTokens: [NSObjectProtocol] = []
+
+    override init() {
+        super.init()
+
+        let notificationCenter = NotificationCenter.default
+        let refreshSources: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshAudioSources()
+            }
+        }
+        audioSourceObservationTokens = [
+            notificationCenter.addObserver(
+                forName: AVCaptureDevice.wasConnectedNotification,
+                object: nil,
+                queue: .main,
+                using: refreshSources
+            ),
+            notificationCenter.addObserver(
+                forName: AVCaptureDevice.wasDisconnectedNotification,
+                object: nil,
+                queue: .main,
+                using: refreshSources
+            ),
+            notificationCenter.addObserver(
+                forName: NSApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main,
+                using: refreshSources
+            )
+        ]
+    }
+
+    deinit {
+        let notificationCenter = NotificationCenter.default
+        audioSourceObservationTokens.forEach(notificationCenter.removeObserver)
+    }
 
     nonisolated static let supportedAudioFileExtensions = [
         "m4a", "mp3", "wav", "mp4", "mpeg", "mpga", "webm"
@@ -152,6 +194,14 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         let session = AVCaptureSession()
         let input = try AVCaptureDeviceInput(device: device)
         let output = AVCaptureMovieFileOutput()
+        let audioDataOutput = AVCaptureAudioDataOutput()
+        audioDataOutput.audioSettings = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+        audioDataOutput.setSampleBufferDelegate(self, queue: microphoneMeteringQueue)
 
         session.beginConfiguration()
         guard session.canAddInput(input) else {
@@ -159,6 +209,12 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
             throw RecordingError.audioSourceUnavailable
         }
         session.addInput(input)
+
+        guard session.canAddOutput(audioDataOutput) else {
+            session.commitConfiguration()
+            throw RecordingError.captureUnavailable
+        }
+        session.addOutput(audioDataOutput)
 
         guard session.canAddOutput(output) else {
             session.commitConfiguration()
@@ -183,6 +239,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         pausedDuration = 0
         elapsedSeconds = 0
         lastDurationSeconds = 0
+        resetMicrophoneLevels()
 
         session.startRunning()
         output.startRecording(to: urls.movie, recordingDelegate: self)
@@ -241,6 +298,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         movieOutput?.pauseRecording()
         pausedAt = Date()
         phase = .paused
+        resetMicrophoneLevels()
         updateElapsedTime()
     }
 
@@ -282,6 +340,11 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
             directory: outputDirectory
         )
         let capture = SystemAudioCaptureController()
+        capture.onMicrophoneLevel = { [weak self] amplitude in
+            Task { @MainActor in
+                self?.recordMicrophoneLevel(amplitude)
+            }
+        }
         try await capture.start(
             systemAudioURL: urls.systemAudio,
             microphoneURL: urls.microphone,
@@ -298,6 +361,7 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         pausedDuration = 0
         elapsedSeconds = 0
         lastDurationSeconds = 0
+        resetMicrophoneLevels()
         phase = .recording
         startTimer()
     }
@@ -360,6 +424,17 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
     ) {
         Task { @MainActor in
             await self.finishRecording(outputFileURL: outputFileURL, error: error)
+        }
+    }
+
+    nonisolated func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        let amplitude = MicrophoneLevelMeter.peakAmplitude(in: sampleBuffer)
+        Task { @MainActor in
+            self.recordMicrophoneLevel(amplitude)
         }
     }
 
@@ -426,7 +501,19 @@ final class RecordingController: NSObject, ObservableObject, AVCaptureFileOutput
         pendingMovieURL = nil
         pendingAudioURL = nil
         discardWhenFinished = false
+        resetMicrophoneLevels()
         phase = .idle
+    }
+
+    private func recordMicrophoneLevel(_ amplitude: Float) {
+        guard phase == .recording else { return }
+        microphoneLevelMeter.record(amplitude: amplitude)
+        microphoneLevels = microphoneLevelMeter.levels
+    }
+
+    private func resetMicrophoneLevels() {
+        microphoneLevelMeter.reset()
+        microphoneLevels = microphoneLevelMeter.levels
     }
 
     private func startTimer() {
