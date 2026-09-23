@@ -111,6 +111,11 @@ final class AppViewModel: ObservableObject {
         refreshPermissionStatuses()
         refreshAPIKeyStatus()
         configureOverlayActions()
+        // Permissions are granted in System Settings, so re-read them whenever
+        // the user comes back to Wisper instead of only when a view appears.
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.refreshPermissionStatuses() }
+            .store(in: &cancellables)
         meetingCoordinator.$records
             .map(\.count)
             .removeDuplicates()
@@ -144,8 +149,9 @@ final class AppViewModel: ObservableObject {
         localLogger.logFileURL
     }
 
+    /// System audio is optional: without it Wisper records the microphone only.
     var canCompleteOnboarding: Bool {
-        hasAPIKey && microphonePermissionStatus == .granted && screenAudioPermissionStatus.isReady
+        hasAPIKey && microphonePermissionStatus == .granted
     }
 
     func openMeeting(id: UUID) {
@@ -188,10 +194,9 @@ final class AppViewModel: ObservableObject {
         refreshPermissionStatuses()
         localLogger.info("Microphone permission requested", metadata: ["granted": String(granted)])
 
+        // A refusal shows up inline as "Open System Settings"; no alert on top.
         if granted {
             statusMessage = "Microphone access granted"
-        } else {
-            errorMessage = "Microphone access is disabled. Enable it in System Settings > Privacy & Security > Microphone."
         }
     }
 
@@ -202,9 +207,7 @@ final class AppViewModel: ObservableObject {
 
         if granted {
             statusMessage = "Screen and system audio recording access granted"
-        } else if ScreenAudioPermission.isSupported {
-            errorMessage = "Approve Wisper in System Settings > Privacy & Security > Screen & System Audio Recording."
-        } else {
+        } else if ScreenAudioPermission.isSupported == false {
             errorMessage = "System audio capture requires macOS 15 or later."
         }
     }
@@ -232,10 +235,15 @@ final class AppViewModel: ObservableObject {
 
     func completeOnboarding() {
         guard canCompleteOnboarding else {
-            errorMessage = "Finish the API key, microphone, and screen/system audio steps before continuing."
+            errorMessage = "Add your OpenAI key and allow the microphone before continuing."
             return
         }
 
+        // Skipping system audio must not leave a capture mode that fails on
+        // the first recording.
+        if captureMode.usesSystemAudio, screenAudioPermissionStatus != .granted {
+            captureMode = .microphone
+        }
         onboardingCompleted = true
         do {
             try saveSettings()
@@ -753,7 +761,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func handleGlobalShortcut() async {
-        if isProcessing { return }
+        if isProcessing || onboardingCompleted == false { return }
 
         NSApp.activate(ignoringOtherApps: false)
         if recorder.phase == .recording || recorder.phase == .paused {
@@ -805,8 +813,7 @@ final class AppViewModel: ObservableObject {
             canDiscard: recorder.phase == .recording || recorder.phase == .paused,
             canRestart: recorder.phase == .recording || recorder.phase == .paused,
             microphoneLevels: recorder.microphoneLevels,
-            showsMicrophoneWaveform: recorder.phase == .recording && captureMode.usesMicrophone && isProcessing == false,
-            captureModeLabel: captureMode.displayName
+            showsMicrophoneWaveform: recorder.phase == .recording && captureMode.usesMicrophone && isProcessing == false
         )
     }
 

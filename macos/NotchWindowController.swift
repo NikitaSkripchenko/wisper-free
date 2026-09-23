@@ -34,8 +34,13 @@ final class NotchWindowController {
         panel.orderFrontRegardless()
     }
 
+    /// Drops the hosting view so the next `show` starts from fresh view state;
+    /// a discard hides the surface without a final update, which would
+    /// otherwise leave the next recording opening on the discard prompt.
     func hide() {
         panel?.orderOut(nil)
+        panel?.contentView = nil
+        hostingView = nil
     }
 
     private func makePanel() -> NSPanel {
@@ -69,7 +74,8 @@ final class NotchWindowController {
 
 /// Maps however many microphone-level samples the meter produced onto a
 /// fixed bar count, so the same data feeds both the 5-bar collapsed peek and
-/// the 22-bar expanded waveform.
+/// the full-width expanded waveform. Interpolates between samples so a wide
+/// waveform reads as a curve rather than flat steps.
 enum NotchWaveform {
     static func barHeights(from levels: [CGFloat], barCount: Int, maxHeight: CGFloat) -> [CGFloat] {
         guard barCount > 0 else { return [] }
@@ -77,22 +83,12 @@ enum NotchWaveform {
             return Array(repeating: maxHeight * 0.12, count: barCount)
         }
         return (0..<barCount).map { index in
-            let sourceIndex = min(levels.count - 1, index * levels.count / barCount)
-            return max(maxHeight * min(max(levels[sourceIndex], 0), 1), 2)
+            let position = barCount == 1 ? 0 : CGFloat(index) * CGFloat(levels.count - 1) / CGFloat(barCount - 1)
+            let lower = Int(position)
+            let upper = min(lower + 1, levels.count - 1)
+            let level = levels[lower] + (levels[upper] - levels[lower]) * (position - CGFloat(lower))
+            return max(maxHeight * min(max(level, 0), 1), 2)
         }
-    }
-}
-
-/// The "Discard this recording?" sentence, built from the mm:ss elapsed text.
-enum NotchDiscardConfirmation {
-    static func sentence(elapsedText: String) -> String {
-        let parts = elapsedText.split(separator: ":")
-        guard parts.count == 2, let minutes = Int(parts[0]), let seconds = Int(parts[1]) else {
-            return "This audio will be deleted from this Mac. It has not been transcribed, and this cannot be undone."
-        }
-        let minutePart = "\(minutes) minute\(minutes == 1 ? "" : "s")"
-        let secondPart = "\(String(format: "%02d", seconds)) second\(seconds == 1 ? "" : "s")"
-        return "\(minutePart) \(secondPart) of audio will be deleted from this Mac. It has not been transcribed, and this cannot be undone."
     }
 }
 
@@ -183,13 +179,15 @@ struct NotchStatusDot: View {
 }
 
 /// A bar-count-agnostic waveform driven by real microphone levels rather
-/// than a decorative looping animation.
+/// than a decorative looping animation. `fillsWidth` spreads the bars
+/// evenly across the available width instead of packing them together.
 struct NotchWaveformView: View {
     let levels: [CGFloat]
     let barCount: Int
     let barWidth: CGFloat
     let maxHeight: CGFloat
     let animated: Bool
+    var fillsWidth = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -199,6 +197,7 @@ struct NotchWaveformView: View {
                 Capsule()
                     .fill(Theme.Notch.waveform)
                     .frame(width: barWidth, height: height)
+                    .frame(maxWidth: fillsWidth ? .infinity : nil)
             }
         }
         .frame(height: maxHeight)
@@ -237,7 +236,6 @@ private struct NotchSurfaceView: View {
                 Group {
                     if isConfirmingDiscard {
                         NotchDiscardConfirmContent(
-                            elapsedText: state.elapsedText,
                             onKeep: { isConfirmingDiscard = false },
                             onDelete: { controller.onDiscard?() }
                         )
@@ -255,7 +253,9 @@ private struct NotchSurfaceView: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: size.width, height: size.height)
+        // Expanded height follows the content, so stopped states without
+        // controls don't leave an empty dark slab under the notch.
+        .frame(width: size.width, height: isExpanded ? nil : size.height, alignment: .topLeading)
         .background(Theme.Notch.background)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius, bottomTrailingRadius: radius, topTrailingRadius: 0, style: .continuous))
         .animation(reduceMotion ? nil : Theme.Motion.notchExpand, value: isExpanded)
@@ -327,54 +327,17 @@ private struct NotchExpandedContent: View {
 
             // The waveform is the live microphone; with nothing being
             // captured it would sit at its floor and read as a broken row of
-            // dots, so each stopped state says what it is instead.
-            Group {
-                switch state.phase {
-                case .recording:
-                    NotchWaveformView(levels: state.microphoneLevels, barCount: 22, barWidth: 3, maxHeight: 30, animated: state.showsMicrophoneWaveform)
-                case .paused:
-                    stoppedLine("Nothing is being captured.", detail: "The \(state.elapsedText) already recorded is kept.")
-                case .processing:
-                    stoppedLine("The recording is saved.", detail: "You can close this and carry on; nothing already saved is lost.")
-                }
-            }
-            .frame(height: 30)
-
-            HStack {
-                Text(state.captureModeLabel)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.Notch.secondaryText)
-                Spacer()
-                if state.phase != .processing {
-                    Text("⌘⇧R stops")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.Notch.tertiaryText)
-                }
+            // dots, so stopped states drop it.
+            if state.phase == .recording {
+                NotchWaveformView(levels: state.microphoneLevels, barCount: 48, barWidth: 3, maxHeight: 30, animated: state.showsMicrophoneWaveform, fillsWidth: true)
             }
 
             if state.phase != .processing {
                 controls
             }
-
-            Text("Nothing is uploaded while you record. The audio goes to OpenAI only after you stop.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.Notch.tertiaryText)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 18)
-    }
-
-    private func stoppedLine(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.Notch.bodyText)
-            Text(detail)
-                .font(.system(size: 11.5))
-                .foregroundStyle(Theme.Notch.tertiaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var controls: some View {
@@ -409,7 +372,6 @@ private struct NotchExpandedContent: View {
 }
 
 private struct NotchDiscardConfirmContent: View {
-    let elapsedText: String
     let onKeep: () -> Void
     let onDelete: () -> Void
 
@@ -426,18 +388,10 @@ private struct NotchDiscardConfirmContent: View {
                     )
                     .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Discard this recording?")
-                        .font(.system(size: 14.5, weight: .semibold))
-                        .foregroundStyle(Theme.Notch.primaryText)
-                    Text(NotchDiscardConfirmation.sentence(elapsedText: elapsedText))
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.Notch.bodyText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("Discard this recording?")
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundStyle(Theme.Notch.primaryText)
             }
-
-            Spacer(minLength: 0)
 
             HStack(spacing: 8) {
                 Spacer()

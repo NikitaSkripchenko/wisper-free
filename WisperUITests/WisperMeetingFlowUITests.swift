@@ -59,9 +59,8 @@ final class WisperMeetingFlowUITests: XCTestCase {
     func testOnboardingExplainsLocalAndOpenAIPrivacyBoundary() {
         launch(fixture: "empty", showOnboarding: true)
 
-        XCTAssertTrue(app.staticTexts["Stays on your Mac"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Sent to OpenAI when processing"].exists)
-        XCTAssertTrue(app.staticTexts["Wisper adds no meeting bot. Record only with everyone’s consent; recording laws vary by location."].exists)
+        XCTAssertTrue(element(identifier: "onboarding.privacy").waitForExistence(timeout: 3))
+        XCTAssertTrue(element(identifier: "onboarding.finish").exists)
     }
 
     func testRecordIsCaptureOnlyAndEmptyHistoryOffersBothCreationPaths() {

@@ -32,7 +32,6 @@ struct RecordingOverlayState: Equatable {
     var canRestart: Bool
     var microphoneLevels: [CGFloat]
     var showsMicrophoneWaveform: Bool
-    var captureModeLabel: String
 }
 
 /// Facade over the recording surface: picks the notch presentation on a
@@ -96,6 +95,10 @@ final class OverlayWindowController {
         isShown = false
         notchController.hide()
         pillPanel?.orderOut(nil)
+        // Fresh view state for the next recording (see NotchWindowController.hide).
+        pillPanel?.contentView = nil
+        pillHostingView = nil
+        pillDiscardConfirmingChanged(false)
     }
 
     private static func targetScreen() -> NSScreen? {
@@ -175,7 +178,6 @@ private struct PillSurfaceView: View {
         Group {
             if isConfirmingDiscard {
                 PillDiscardConfirmContent(
-                    elapsedText: state.elapsedText,
                     onKeep: { setConfirming(false) },
                     onDelete: { controller.onDiscard?() }
                 )
@@ -238,12 +240,7 @@ private struct PillRecordingContent: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Notch.primaryText)
 
-            VStack(alignment: .leading, spacing: 6) {
-                NotchWaveformView(levels: state.microphoneLevels, barCount: 5, barWidth: 3, maxHeight: 16, animated: state.phase.showsWaveform && state.showsMicrophoneWaveform)
-                Text(state.captureModeLabel)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Notch.secondaryText)
-            }
+            NotchWaveformView(levels: state.microphoneLevels, barCount: 5, barWidth: 3, maxHeight: 16, animated: state.phase.showsWaveform && state.showsMicrophoneWaveform)
 
             Spacer(minLength: 4)
 
@@ -301,15 +298,6 @@ private struct PillPausedContent: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Notch.secondaryText)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Nothing is being captured.")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Theme.Notch.bodyText)
-                Text("The \(state.elapsedText) already recorded is kept.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Notch.secondaryText)
-            }
-
             Spacer(minLength: 4)
 
             HStack(spacing: 8) {
@@ -361,10 +349,6 @@ private struct PillProcessingContent: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Notch.secondaryText)
 
-            Text("The recording is saved. You can close this and carry on.")
-                .font(.system(size: 11.5))
-                .foregroundStyle(Theme.Notch.bodyText)
-
             Spacer(minLength: 4)
         }
         .padding(.horizontal, 18)
@@ -373,7 +357,6 @@ private struct PillProcessingContent: View {
 }
 
 private struct PillDiscardConfirmContent: View {
-    let elapsedText: String
     let onKeep: () -> Void
     let onDelete: () -> Void
 
@@ -390,15 +373,9 @@ private struct PillDiscardConfirmContent: View {
                     )
                     .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Discard this recording?")
-                        .font(.system(size: 14.5, weight: .semibold))
-                        .foregroundStyle(Theme.Notch.primaryText)
-                    Text(NotchDiscardConfirmation.sentence(elapsedText: elapsedText))
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.Notch.bodyText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("Discard this recording?")
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundStyle(Theme.Notch.primaryText)
             }
 
             Spacer(minLength: 0)
