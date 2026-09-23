@@ -19,7 +19,8 @@ struct MeetingDetailView: View {
 
     @State private var transcript: String?
     @State private var notes: MeetingNotes?
-    @State private var loadError: String?
+    @State private var transcriptLoadError: String?
+    @State private var notesLoadError: String?
     @State private var confirmRemoval = false
     @State private var selectedTab: MeetingDetailTab = .notes
     @State private var isEditingTitle = false
@@ -71,17 +72,19 @@ struct MeetingDetailView: View {
         .task(id: record.transcriptArtifact) {
             do {
                 transcript = try await coordinator.loadTranscript(for: record)
-                loadError = nil
+                transcriptLoadError = nil
             } catch {
-                loadError = "Some meeting files could not be loaded."
+                transcript = nil
+                transcriptLoadError = "The transcript file could not be read: \(error.localizedDescription)"
             }
         }
         .task(id: record.lastValidNotesArtifact) {
             do {
                 notes = try await coordinator.loadNotes(for: record)
-                loadError = nil
+                notesLoadError = nil
             } catch {
-                loadError = "Some meeting files could not be loaded."
+                notes = nil
+                notesLoadError = "The notes file could not be read: \(error.localizedDescription)"
             }
         }
         .onAppear { handleRenameRequest() }
@@ -161,12 +164,14 @@ struct MeetingDetailView: View {
                         if record.transcription.status == .failed {
                             Button("Retry Transcription") { Task { await appViewModel.retryTranscription(for: record) } }
                                 .disabled(record.transcription.failure?.isRetryable == false)
-                        } else if record.transcription.status == .completed,
-                                  record.notes.status == .failed || record.lastValidNotesArtifact != nil {
-                            Button(record.lastValidNotesArtifact == nil ? "Retry Notes" : "Regenerate Notes") {
-                                Task { await appViewModel.retryNotes(for: record) }
+                        } else if record.transcription.status == .completed {
+                            Button("Regenerate Transcript") { Task { await appViewModel.retryTranscription(for: record) } }
+                            if record.notes.status == .failed || record.lastValidNotesArtifact != nil {
+                                Button(record.lastValidNotesArtifact == nil ? "Retry Notes" : "Regenerate Notes") {
+                                    Task { await appViewModel.retryNotes(for: record) }
+                                }
+                                .disabled(record.notes.failure?.isRetryable == false)
                             }
-                            .disabled(record.notes.failure?.isRetryable == false)
                         }
                         Button("Play or Pause Audio") { Task { await appViewModel.playMeetingAudio(record) } }
                         Button("Reveal Audio in Finder") { Task { await appViewModel.revealMeetingAudio(record) } }
@@ -305,6 +310,10 @@ struct MeetingDetailView: View {
             ProcessingStagesView(record: record, openRawTranscript: openRawTranscript)
         } else if let notes {
             NotesSectionsView(notes: notes, isNarrow: showsBackButton, openRawTranscript: openRawTranscript)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("meeting.notes")
+        } else if let notesLoadError {
+            inlineMessage(notesLoadError, retryable: false)
         } else {
             Text("Loading notes…")
                 .foregroundStyle(Theme.Color.textTertiary)
@@ -315,7 +324,11 @@ struct MeetingDetailView: View {
         selectedTab = .transcript
     }
 
+    @ViewBuilder
     private var transcriptContent: some View {
+        if let transcriptLoadError {
+            inlineMessage(transcriptLoadError, retryable: false)
+        }
         Text(transcript ?? "No transcript is available yet.")
             .font(.system(size: 13))
             .foregroundStyle(transcript == nil ? Theme.Color.textTertiary : Theme.Color.textBody)
@@ -840,7 +853,11 @@ private struct ProcessingStagesView: View {
 
     private var stopProcessingBanner: some View {
         HStack(spacing: 16) {
-            Text("Stopping now keeps the recording and every part already transcribed. You can retry the rest later.")
+            // Chunk text is only persisted once the whole transcription
+            // returns, so a stop mid-transcription keeps just the audio.
+            Text(record.transcription.status == .processing
+                 ? "Stopping now keeps the recording. Retrying transcribes it again from the start."
+                 : "Stopping now keeps the recording and the transcript. You can retry the notes later.")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)

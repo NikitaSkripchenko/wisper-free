@@ -7,13 +7,16 @@ import UniformTypeIdentifiers
 enum MeetingRowChip: Equatable {
     case none
     case transcribing
+    case transcriptFailed
     case notesFailed
 
     init(state: MeetingDisplayState) {
         switch state {
         case .transcribing, .generatingNotes:
             self = .transcribing
-        case .transcriptFailed, .notesFailed:
+        case .transcriptFailed:
+            self = .transcriptFailed
+        case .notesFailed:
             self = .notesFailed
         case .captured, .transcriptReady, .complete:
             self = .none
@@ -123,7 +126,7 @@ struct MeetingsView: View {
                             Circle().fill(.white).frame(width: 9, height: 9)
                             Text("Record meeting")
                         }
-                        Text("⌘⇧R").foregroundStyle(.white.opacity(0.82))
+                        Text(appViewModel.shortcut.symbolText).foregroundStyle(.white.opacity(0.82))
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity)
@@ -167,6 +170,18 @@ struct MeetingsView: View {
                         TextField("Search titles and dates", text: $searchText)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12))
+                            .accessibilityIdentifier("sidebar.search")
+                        if searchText.isEmpty == false {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Theme.Color.textTertiary)
+                                    .imageScale(.small)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear Search")
+                        }
                     }
                     .padding(.horizontal, 8)
                     .frame(height: 26)
@@ -211,6 +226,8 @@ struct MeetingsView: View {
                             )
                             .contentShape(Rectangle())
                             .onTapGesture { appViewModel.selectedMeetingID = record.id }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityIdentifier("meeting.row")
                             .contextMenu {
                                 Button("Rename") { appViewModel.requestMeetingRename(id: record.id) }
                                     .disabled(coordinator.activeMeetingID == record.id)
@@ -287,7 +304,10 @@ struct MeetingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.Color.canvas)
         } else if let record = selectedRecord {
+            // Keyed by meeting so drafts, tabs and loaded artifacts don't
+            // carry over to the next selection.
             MeetingDetailView(record: record, showsBackButton: isNarrow)
+                .id(record.id)
         } else {
             welcomePane
         }
@@ -453,6 +473,8 @@ private struct MeetingListRow: View {
                     .lineLimit(1)
             case .transcribing:
                 chipLabel("Transcribing", icon: ProgressView().controlSize(.mini), tint: Theme.Color.accentSoftText, fill: .white)
+            case .transcriptFailed:
+                chipLabel("Transcription failed", icon: Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)), tint: Theme.Color.dangerText, fill: Theme.Color.dangerSoft)
             case .notesFailed:
                 chipLabel("Notes failed — transcript ready", icon: Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)), tint: Theme.Color.dangerText, fill: Theme.Color.dangerSoft)
             }

@@ -274,7 +274,7 @@ private struct OnboardingView: View {
                 .accessibilityIdentifier("onboarding.finish")
 
                 Text(appViewModel.canCompleteOnboarding
-                     ? "Then press \(appViewModel.shortcut.displayText) anywhere to record."
+                     ? "Then press \(appViewModel.shortcut.symbolText) anywhere to record."
                      : "You can change any of this later in Settings.")
                     .font(.system(size: 11.5))
                     .foregroundStyle(appViewModel.canCompleteOnboarding ? Theme.Color.textSecondary : Theme.Color.textTertiary)

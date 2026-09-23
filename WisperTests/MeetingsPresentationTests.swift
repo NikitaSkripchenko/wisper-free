@@ -29,8 +29,12 @@ final class MeetingsPresentationTests: XCTestCase {
         XCTAssertEqual(MeetingRowChip(state: .complete), .none)
         XCTAssertEqual(MeetingRowChip(state: .transcribing), .transcribing)
         XCTAssertEqual(MeetingRowChip(state: .generatingNotes), .transcribing)
-        XCTAssertEqual(MeetingRowChip(state: .transcriptFailed), .notesFailed)
+        XCTAssertEqual(MeetingRowChip(state: .transcriptFailed), .transcriptFailed)
         XCTAssertEqual(MeetingRowChip(state: .notesFailed), .notesFailed)
+    }
+
+    func testShortcutSymbolTextUsesAppleModifierOrder() {
+        XCTAssertEqual(KeyboardShortcut.default.symbolText, "⇧⌘Space")
     }
 
     func testChunkProgressStatusText() {

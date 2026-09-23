@@ -29,6 +29,16 @@ struct KeyboardShortcut: Codable, Equatable {
         displayText = Self.displayText(keyCode: UInt32(event.keyCode), flags: event.modifierFlags)
     }
 
+    /// Compact form for tight spots ("⇧⌘Space"), in Apple's modifier order.
+    var symbolText: String {
+        var text = ""
+        if carbonModifiers & UInt32(controlKey) != 0 { text += "⌃" }
+        if carbonModifiers & UInt32(optionKey) != 0 { text += "⌥" }
+        if carbonModifiers & UInt32(shiftKey) != 0 { text += "⇧" }
+        if carbonModifiers & UInt32(cmdKey) != 0 { text += "⌘" }
+        return text + Self.keyName(for: keyCode)
+    }
+
     private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
         var modifiers: UInt32 = 0
         if flags.contains(.command) { modifiers |= UInt32(cmdKey) }
