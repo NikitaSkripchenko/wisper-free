@@ -1,10 +1,45 @@
 import AppKit
+import Combine
 import Foundation
+
+/// Pure formatting for the Settings storage line ("14 meetings · 3.4 GB of audio").
+/// Kept free of AppViewModel so it's directly testable.
+enum MeetingStorageStats {
+    static func summaryText(meetingCount: Int, audioBytes: Int64?) -> String {
+        let meetingsText = meetingCount == 1 ? "1 meeting" : "\(meetingCount) meetings"
+        guard let audioBytes else { return meetingsText }
+        let formatted = ByteCountFormatter.string(fromByteCount: audioBytes, countStyle: .file)
+        return "\(meetingsText) · \(formatted) of audio"
+    }
+
+    private static let audioFileExtensions: Set<String> = ["m4a", "wav", "caf", "mp3", "aac", "aiff"]
+
+    /// Walks the Meetings directory off the main actor and sums audio file sizes only
+    /// (record.json / transcript-*.txt / notes-*.json are skipped by extension).
+    nonisolated static func measureAudioBytes(in meetingsRoot: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: meetingsRoot,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var total: Int64 = 0
+        for case let url as URL in enumerator where audioFileExtensions.contains(url.pathExtension.lowercased()) {
+            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
+}
 
 @MainActor
 final class AppViewModel: ObservableObject {
+    /// No longer drives navigation (the workspace replaced the sidebar's section
+    /// switch); left in place because other code and tests still read it.
     @Published var selectedSection: SidebarSection? = .record
     @Published var selectedMeetingID: UUID?
+    @Published var isSettingsPresented = false
     @Published var renameRequestedMeetingID: UUID?
     @Published var statusMessage = "Ready to record"
     @Published var errorMessage: String?
@@ -17,8 +52,9 @@ final class AppViewModel: ObservableObject {
     @Published var chunkSeconds = 480
     @Published var selectedAudioSourceID: String?
     @Published var captureMode: RecordingCaptureMode = .defaultMode
-    @Published var showInMenuBarOnly = false
     @Published var onboardingCompleted = false
+    @Published var showOverlayWhileRecording = true
+    @Published private(set) var meetingStorageAudioBytes: Int64?
     @Published private(set) var microphonePermissionStatus: PermissionReadiness = .notDetermined
     @Published private(set) var screenAudioPermissionStatus: PermissionReadiness = .notDetermined
     @Published private(set) var activity: AppActivity = .idle
@@ -36,6 +72,7 @@ final class AppViewModel: ObservableObject {
     private let settingsStore: any AppSettingsStoring
     private var overlayTimer: Timer?
     private var lastAnnouncedMeetingStatus: String?
+    private var cancellables = Set<AnyCancellable>()
 
     init(services: AppServices = .live()) {
         recorder = services.recorder
@@ -61,20 +98,29 @@ final class AppViewModel: ObservableObject {
         chunkSeconds = settings.chunkSeconds
         selectedAudioSourceID = settings.audioSourceID
         captureMode = settings.captureMode ?? .defaultMode
-        showInMenuBarOnly = settings.showInMenuBarOnly ?? false
         onboardingCompleted = settings.onboardingCompleted
+        showOverlayWhileRecording = settings.showOverlayWhileRecording
 #if DEBUG
         if ProcessInfo.processInfo.environment["WISPER_UI_TEST_ROOT"] != nil {
             onboardingCompleted = ProcessInfo.processInfo.environment["WISPER_UI_TEST_ONBOARDING"] != "1"
         }
 #endif
-        selectedSection = .record
         activity = .bootstrapping
         isProcessing = true
         recorder.refreshAudioSources()
         refreshPermissionStatuses()
         refreshAPIKeyStatus()
         configureOverlayActions()
+        // Permissions are granted in System Settings, so re-read them whenever
+        // the user comes back to Wisper instead of only when a view appears.
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.refreshPermissionStatuses() }
+            .store(in: &cancellables)
+        meetingCoordinator.$records
+            .map(\.count)
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.refreshMeetingStorageStats() }
+            .store(in: &cancellables)
         localLogger.info("App state initialized", metadata: [
             "captureMode": captureMode.rawValue,
             "chunkingEnabled": String(chunkingEnabled)
@@ -92,7 +138,6 @@ final class AppViewModel: ObservableObject {
             if case .failed(let message) = meetingCoordinator.bootstrapState {
                 errorMessage = message
             }
-            applyPresentationMode(showMainWindowWhenRegular: true)
         }
     }
 
@@ -104,13 +149,13 @@ final class AppViewModel: ObservableObject {
         localLogger.logFileURL
     }
 
+    /// System audio is optional: without it Wisper records the microphone only.
     var canCompleteOnboarding: Bool {
-        hasAPIKey && microphonePermissionStatus == .granted && screenAudioPermissionStatus.isReady
+        hasAPIKey && microphonePermissionStatus == .granted
     }
 
     func openMeeting(id: UUID) {
         selectedMeetingID = id
-        selectedSection = .history
     }
 
     func requestMeetingRename(id: UUID) {
@@ -149,10 +194,9 @@ final class AppViewModel: ObservableObject {
         refreshPermissionStatuses()
         localLogger.info("Microphone permission requested", metadata: ["granted": String(granted)])
 
+        // A refusal shows up inline as "Open System Settings"; no alert on top.
         if granted {
             statusMessage = "Microphone access granted"
-        } else {
-            errorMessage = "Microphone access is disabled. Enable it in System Settings > Privacy & Security > Microphone."
         }
     }
 
@@ -163,9 +207,7 @@ final class AppViewModel: ObservableObject {
 
         if granted {
             statusMessage = "Screen and system audio recording access granted"
-        } else if ScreenAudioPermission.isSupported {
-            errorMessage = "Approve Wisper in System Settings > Privacy & Security > Screen & System Audio Recording."
-        } else {
+        } else if ScreenAudioPermission.isSupported == false {
             errorMessage = "System audio capture requires macOS 15 or later."
         }
     }
@@ -193,14 +235,18 @@ final class AppViewModel: ObservableObject {
 
     func completeOnboarding() {
         guard canCompleteOnboarding else {
-            errorMessage = "Finish the API key, microphone, and screen/system audio steps before continuing."
+            errorMessage = "Add your OpenAI key and allow the microphone before continuing."
             return
         }
 
+        // Skipping system audio must not leave a capture mode that fails on
+        // the first recording.
+        if captureMode.usesSystemAudio, screenAudioPermissionStatus != .granted {
+            captureMode = .microphone
+        }
         onboardingCompleted = true
         do {
             try saveSettings()
-            selectedSection = .record
             statusMessage = "Wisper is ready"
             localLogger.info("Onboarding completed")
         } catch {
@@ -243,7 +289,7 @@ final class AppViewModel: ObservableObject {
         guard canBeginNewWork() else { return }
 
         guard hasAPIKey else {
-            selectedSection = .settings
+            isSettingsPresented = true
             errorMessage = "Save an OpenAI API key before recording. Wisper transcribes automatically when you stop."
             return
         }
@@ -312,7 +358,7 @@ final class AppViewModel: ObservableObject {
         }
 
         guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
-            selectedSection = .settings
+            isSettingsPresented = true
             errorMessage = "Save an OpenAI API key before importing audio."
             return
         }
@@ -439,35 +485,33 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func saveShowInMenuBarOnly(_ value: Bool) {
-        guard showInMenuBarOnly != value else { return }
-
-        showInMenuBarOnly = value
+    func saveShowOverlayWhileRecording(_ enabled: Bool) {
+        showOverlayWhileRecording = enabled
         do {
             try saveSettings()
-            statusMessage = value ? "Wisper will stay in the menu bar" : "Wisper will show as a normal app"
-            applyPresentationMode(showMainWindowWhenRegular: true)
-            localLogger.info("Presentation mode changed", metadata: ["showInMenuBarOnly": String(value)])
+            if enabled {
+                if recorder.phase == .recording || recorder.phase == .paused {
+                    showOverlay()
+                    startOverlayTimer()
+                }
+            } else {
+                overlayController.hide()
+            }
+            localLogger.info("Show overlay setting saved", metadata: ["enabled": String(enabled)])
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func applyPresentationMode(showMainWindowWhenRegular: Bool) {
-        if showInMenuBarOnly {
-            NSApp.setActivationPolicy(.accessory)
-            hideStandardWindows()
-        } else {
-            NSApp.setActivationPolicy(.regular)
-            if showMainWindowWhenRegular {
-                NSApp.activate(ignoringOtherApps: true)
+    /// Measures Meetings-directory audio bytes off the main actor and caches the result;
+    /// call again only when the Settings screen appears or the meeting records change.
+    func refreshMeetingStorageStats() {
+        let meetingsRoot = AppStorageLocation.supportDirectory.appending(path: "Meetings", directoryHint: .isDirectory)
+        Task.detached(priority: .utility) { [weak self] in
+            let bytes = MeetingStorageStats.measureAudioBytes(in: meetingsRoot)
+            await MainActor.run {
+                self?.meetingStorageAudioBytes = bytes
             }
-        }
-    }
-
-    private func hideStandardWindows() {
-        for window in NSApp.windows where window is NSPanel == false {
-            window.orderOut(nil)
         }
     }
 
@@ -512,7 +556,7 @@ final class AppViewModel: ObservableObject {
 
     func retryTranscription(for record: MeetingRecord) async {
         guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
-            selectedSection = .settings
+            isSettingsPresented = true
             errorMessage = "Save an OpenAI API key before retrying."
             return
         }
@@ -535,7 +579,7 @@ final class AppViewModel: ObservableObject {
 
     func retryNotes(for record: MeetingRecord) async {
         guard let apiKey = try? keychain.read(), apiKey.isEmpty == false else {
-            selectedSection = .settings
+            isSettingsPresented = true
             errorMessage = "Save an OpenAI API key before retrying notes."
             return
         }
@@ -642,6 +686,11 @@ final class AppViewModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([AppStorageLocation.supportDirectory])
     }
 
+    func stopProcessing(for record: MeetingRecord) {
+        guard meetingCoordinator.activeMeetingID == record.id else { return }
+        meetingCoordinator.cancelProcessing()
+    }
+
     func revealMeetingAudio(_ record: MeetingRecord) async {
         do {
             let url = try await meetingCoordinator.audioURL(for: record)
@@ -659,7 +708,7 @@ final class AppViewModel: ObservableObject {
                let record = meetingCoordinator.records.first(where: { $0.id == id }) {
                 statusMessage = record.displayState.statusText
                 latestTranscriptText = record.displayState.statusText
-                updateOverlay(detail: record.displayState.statusText)
+                updateOverlay()
                 announceMeetingStatusIfNeeded(record.displayState.statusText)
             }
             try? await Task.sleep(for: .milliseconds(80))
@@ -712,7 +761,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func handleGlobalShortcut() async {
-        if isProcessing { return }
+        if isProcessing || onboardingCompleted == false { return }
 
         NSApp.activate(ignoringOtherApps: false)
         if recorder.phase == .recording || recorder.phase == .paused {
@@ -738,17 +787,25 @@ final class AppViewModel: ObservableObject {
     }
 
     private func showOverlay() {
+        guard showOverlayWhileRecording else { return }
         overlayController.show(state: overlayState())
     }
 
-    private func updateOverlay(detail: String? = nil) {
-        overlayController.update(state: overlayState(detail: detail))
+    private func updateOverlay() {
+        guard showOverlayWhileRecording else { return }
+        overlayController.update(state: overlayState())
     }
 
-    private func overlayState(detail: String? = nil) -> RecordingOverlayState {
+    /// Processing outranks the recorder's own phase: once capture stops the
+    /// surface must stop looking like it is still listening.
+    private var overlayPhase: RecordingSurfacePhase {
+        if isProcessing { return .processing }
+        return recorder.phase == .paused ? .paused : .recording
+    }
+
+    private func overlayState() -> RecordingOverlayState {
         RecordingOverlayState(
-            state: isProcessing ? "Processing/transcribing" : recorder.phase.rawValue,
-            detail: detail ?? statusMessage,
+            phase: overlayPhase,
             elapsedText: recorder.elapsedDisplay,
             canPause: recorder.phase == .recording && recorder.canPause && isProcessing == false,
             canResume: recorder.phase == .paused && isProcessing == false,
@@ -793,8 +850,8 @@ final class AppViewModel: ObservableObject {
             chunkSeconds: chunkSeconds,
             audioSourceID: selectedAudioSourceID,
             captureMode: captureMode,
-            showInMenuBarOnly: showInMenuBarOnly,
-            onboardingCompleted: onboardingCompleted
+            onboardingCompleted: onboardingCompleted,
+            showOverlayWhileRecording: showOverlayWhileRecording
         ))
     }
 

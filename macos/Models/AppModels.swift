@@ -31,8 +31,8 @@ struct AppSettings: Codable {
     var chunkSeconds: Int
     var audioSourceID: String?
     var captureMode: RecordingCaptureMode?
-    var showInMenuBarOnly: Bool?
     var onboardingCompleted: Bool
+    var showOverlayWhileRecording: Bool
 
     static let `default` = AppSettings(
         shortcut: .default,
@@ -40,8 +40,8 @@ struct AppSettings: Codable {
         chunkSeconds: 480,
         audioSourceID: nil,
         captureMode: .defaultMode,
-        showInMenuBarOnly: false,
-        onboardingCompleted: false
+        onboardingCompleted: false,
+        showOverlayWhileRecording: true
     )
 
     init(
@@ -50,16 +50,16 @@ struct AppSettings: Codable {
         chunkSeconds: Int,
         audioSourceID: String?,
         captureMode: RecordingCaptureMode?,
-        showInMenuBarOnly: Bool?,
-        onboardingCompleted: Bool
+        onboardingCompleted: Bool,
+        showOverlayWhileRecording: Bool = true
     ) {
         self.shortcut = shortcut
         self.chunkingEnabled = chunkingEnabled
         self.chunkSeconds = chunkSeconds
         self.audioSourceID = audioSourceID
         self.captureMode = captureMode
-        self.showInMenuBarOnly = showInMenuBarOnly
         self.onboardingCompleted = onboardingCompleted
+        self.showOverlayWhileRecording = showOverlayWhileRecording
     }
 
     enum CodingKeys: String, CodingKey {
@@ -68,8 +68,8 @@ struct AppSettings: Codable {
         case chunkSeconds
         case audioSourceID
         case captureMode
-        case showInMenuBarOnly
         case onboardingCompleted
+        case showOverlayWhileRecording
     }
 
     init(from decoder: Decoder) throws {
@@ -80,9 +80,10 @@ struct AppSettings: Codable {
         chunkSeconds = try container.decodeIfPresent(Int.self, forKey: .chunkSeconds) ?? defaults.chunkSeconds
         audioSourceID = try container.decodeIfPresent(String.self, forKey: .audioSourceID)
         captureMode = try container.decodeIfPresent(RecordingCaptureMode.self, forKey: .captureMode) ?? defaults.captureMode
-        showInMenuBarOnly = try container.decodeIfPresent(Bool.self, forKey: .showInMenuBarOnly) ?? defaults.showInMenuBarOnly
         onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted)
             ?? defaults.onboardingCompleted
+        showOverlayWhileRecording = try container.decodeIfPresent(Bool.self, forKey: .showOverlayWhileRecording)
+            ?? defaults.showOverlayWhileRecording
     }
 }
 

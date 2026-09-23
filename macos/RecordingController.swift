@@ -20,11 +20,11 @@ enum RecordingCaptureMode: String, CaseIterable, Codable, Identifiable {
     var displayName: String {
         switch self {
         case .microphone:
-            "Microphone"
+            "Microphone only"
         case .systemAudio:
-            "System Audio"
+            "System audio"
         case .microphoneAndSystemAudio:
-            "Microphone + System Audio"
+            "Microphone + system audio"
         }
     }
 

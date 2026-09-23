@@ -21,6 +21,8 @@
 		2B0000010000000000000002 /* MeetingNotesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000002 /* MeetingNotesServiceTests.swift */; };
 		2B0000010000000000000003 /* CaptureFeasibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000003 /* CaptureFeasibility.swift */; };
 		2B0000010000000000000004 /* CaptureFeasibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000004 /* CaptureFeasibilityTests.swift */; };
+		4252AA6E4BC440689BFF19AE /* MeetingsPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7145F69A1B4441A8F53B895 /* MeetingsPresentationTests.swift */; };
+		28810405571E443C9D5F6246 /* NotchPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A10708381FF4F349AF32808 /* NotchPresentationTests.swift */; };
 		2B0000010000000000000005 /* MeetingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000005 /* MeetingModels.swift */; };
 		2B0000010000000000000006 /* MeetingHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000006 /* MeetingHistoryStore.swift */; };
 		2B0000010000000000000007 /* MeetingHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0000020000000000000007 /* MeetingHistoryStoreTests.swift */; };
@@ -30,11 +32,16 @@
 		8408C3BA2FDC20670079C698 /* ShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B82FDC20670079C698 /* ShortcutManager.swift */; };
 		8408C3BB2FDC20670079C698 /* WisperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B92FDC20670079C698 /* WisperApp.swift */; };
 		8408C3BC2FDC20670079C698 /* OverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B62FDC20670079C698 /* OverlayWindowController.swift */; };
+		BADC45E47DBD4BF2BA688B43 /* NotchWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8648A5123A964122B1C087F9 /* NotchWindowController.swift */; };
 		8408C3BE2FDC20670079C698 /* AudioPlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B12FDC20670079C698 /* AudioPlaybackController.swift */; };
 		8408C3BF2FDC20670079C698 /* RecordingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B72FDC20670079C698 /* RecordingController.swift */; };
 		8408C3C02FDC20670079C698 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B42FDC20670079C698 /* KeychainStore.swift */; };
 		8408C3C12FDC20670079C698 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3AE2FDC20670079C698 /* AppViewModel.swift */; };
 		8408C3C22FDC20670079C698 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3B22FDC20670079C698 /* ContentView.swift */; };
+		6B7E25C0192C4ED4801C4234 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C29D88F1F954ED8BD6D26B8 /* SettingsView.swift */; };
+		F79C004C5A624CE2ABB6BFC8 /* MeetingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53680F14CF664EA7BFF59B2D /* MeetingDetailView.swift */; };
+		60796CFBAF334E76A94C8AED /* MeetingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E74BBA68F249EE91C3F9A2 /* MeetingsView.swift */; };
+		60C1FC6B9AF74B0DB43FE4F1 /* WisperTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2230209C91D5407387289B68 /* WisperTheme.swift */; };
 		8408C3C42FDC20670079C698 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8408C3AF2FDC20670079C698 /* Assets.xcassets */; };
 		8408C3C82FDC20670079C698 /* SystemAudioCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8408C3C62FDC20670079C699 /* SystemAudioCaptureController.swift */; };
 		A10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A10001010000000000000001 /* Sparkle */; };
@@ -63,6 +70,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D0C0FF1C0000000000000001 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		016A12242FE9925D00AA6B28 /* TODO.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = TODO.md; sourceTree = "<group>"; };
 		016A12262FED2A7900AA6B28 /* AudioChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChunker.swift; sourceTree = "<group>"; };
 		016A12272FED2A7900AA6B28 /* OpenAITranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITranscriptionService.swift; sourceTree = "<group>"; };
@@ -78,6 +86,8 @@
 		2B0000020000000000000002 /* MeetingNotesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesServiceTests.swift; sourceTree = "<group>"; };
 		2B0000020000000000000003 /* CaptureFeasibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeasibility.swift; sourceTree = "<group>"; };
 		2B0000020000000000000004 /* CaptureFeasibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeasibilityTests.swift; sourceTree = "<group>"; };
+		A7145F69A1B4441A8F53B895 /* MeetingsPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsPresentationTests.swift; sourceTree = "<group>"; };
+		4A10708381FF4F349AF32808 /* NotchPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchPresentationTests.swift; sourceTree = "<group>"; };
 		2B0000020000000000000005 /* MeetingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingModels.swift; sourceTree = "<group>"; };
 		2B0000020000000000000006 /* MeetingHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistoryStore.swift; sourceTree = "<group>"; };
 		2B0000020000000000000007 /* MeetingHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistoryStoreTests.swift; sourceTree = "<group>"; };
@@ -88,9 +98,14 @@
 		8408C3AF2FDC20670079C698 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8408C3B12FDC20670079C698 /* AudioPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackController.swift; sourceTree = "<group>"; };
 		8408C3B22FDC20670079C698 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		9C29D88F1F954ED8BD6D26B8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		53680F14CF664EA7BFF59B2D /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetailView.swift; sourceTree = "<group>"; };
+		D1E74BBA68F249EE91C3F9A2 /* MeetingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsView.swift; sourceTree = "<group>"; };
+		2230209C91D5407387289B68 /* WisperTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WisperTheme.swift; sourceTree = "<group>"; };
 		8408C3B32FDC20670079C698 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8408C3B42FDC20670079C698 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		8408C3B62FDC20670079C698 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
+		8648A5123A964122B1C087F9 /* NotchWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchWindowController.swift; sourceTree = "<group>"; };
 		8408C3B72FDC20670079C698 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		8408C3B82FDC20670079C698 /* ShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutManager.swift; sourceTree = "<group>"; };
 		8408C3B92FDC20670079C698 /* WisperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WisperApp.swift; sourceTree = "<group>"; };
@@ -150,7 +165,16 @@
 				C10000030000000000000001 /* WisperUITests */,
 				2A0000030000000000000002 /* macos */,
 				016A12242FE9925D00AA6B28 /* TODO.md */,
+				D0C0FF1C0000000000000002 /* Config */,
 			);
+			sourceTree = "<group>";
+		};
+		D0C0FF1C0000000000000002 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				D0C0FF1C0000000000000001 /* Signing.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		0B0000010000000000000032 /* Products */ = {
@@ -180,6 +204,7 @@
 				2A0000020000000000000003 /* PermissionReadiness.swift */,
 				2A0000030000000000000006 /* Persistence */,
 				8408C3B62FDC20670079C698 /* OverlayWindowController.swift */,
+				8648A5123A964122B1C087F9 /* NotchWindowController.swift */,
 				8408C3B72FDC20670079C698 /* RecordingController.swift */,
 				8408C3B82FDC20670079C698 /* ShortcutManager.swift */,
 				8408C3C62FDC20670079C699 /* SystemAudioCaptureController.swift */,
@@ -214,6 +239,10 @@
 			isa = PBXGroup;
 			children = (
 				8408C3B22FDC20670079C698 /* ContentView.swift */,
+				9C29D88F1F954ED8BD6D26B8 /* SettingsView.swift */,
+				53680F14CF664EA7BFF59B2D /* MeetingDetailView.swift */,
+				D1E74BBA68F249EE91C3F9A2 /* MeetingsView.swift */,
+				2230209C91D5407387289B68 /* WisperTheme.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -232,6 +261,8 @@
 			children = (
 				2A0000020000000000000007 /* AppPersistenceStoresTests.swift */,
 				2B0000020000000000000004 /* CaptureFeasibilityTests.swift */,
+				A7145F69A1B4441A8F53B895 /* MeetingsPresentationTests.swift */,
+				4A10708381FF4F349AF32808 /* NotchPresentationTests.swift */,
 				2B0000020000000000000007 /* MeetingHistoryStoreTests.swift */,
 				2B0000020000000000000009 /* MeetingProcessingCoordinatorTests.swift */,
 				2B0000020000000000000010 /* MeetingNotesLiveEvalTests.swift */,
@@ -391,6 +422,7 @@
 				2A0000010000000000000009 /* AppServices.swift in Sources */,
 				8408C3BB2FDC20670079C698 /* WisperApp.swift in Sources */,
 				8408C3BC2FDC20670079C698 /* OverlayWindowController.swift in Sources */,
+				BADC45E47DBD4BF2BA688B43 /* NotchWindowController.swift in Sources */,
 				2A0000010000000000000003 /* PermissionReadiness.swift in Sources */,
 				8408C3BE2FDC20670079C698 /* AudioPlaybackController.swift in Sources */,
 				2B0000010000000000000003 /* CaptureFeasibility.swift in Sources */,
@@ -405,6 +437,10 @@
 				2B0000010000000000000006 /* MeetingHistoryStore.swift in Sources */,
 				8408C3C12FDC20670079C698 /* AppViewModel.swift in Sources */,
 				8408C3C22FDC20670079C698 /* ContentView.swift in Sources */,
+				6B7E25C0192C4ED4801C4234 /* SettingsView.swift in Sources */,
+				F79C004C5A624CE2ABB6BFC8 /* MeetingDetailView.swift in Sources */,
+				60796CFBAF334E76A94C8AED /* MeetingsView.swift in Sources */,
+				60C1FC6B9AF74B0DB43FE4F1 /* WisperTheme.swift in Sources */,
 				8408C3C82FDC20670079C698 /* SystemAudioCaptureController.swift in Sources */,
 				A10000010000000000000002 /* UpdateController.swift in Sources */,
 				C10000010000000000000001 /* UITestFixtures.swift in Sources */,
@@ -420,6 +456,8 @@
 			files = (
 				2A0000010000000000000008 /* AppPersistenceStoresTests.swift in Sources */,
 				2B0000010000000000000004 /* CaptureFeasibilityTests.swift in Sources */,
+				4252AA6E4BC440689BFF19AE /* MeetingsPresentationTests.swift in Sources */,
+				28810405571E443C9D5F6246 /* NotchPresentationTests.swift in Sources */,
 				2B0000010000000000000007 /* MeetingHistoryStoreTests.swift in Sources */,
 				2B0000010000000000000009 /* MeetingProcessingCoordinatorTests.swift in Sources */,
 				2B0000010000000000000010 /* MeetingNotesLiveEvalTests.swift in Sources */,
@@ -455,6 +493,7 @@
 /* Begin XCBuildConfiguration section */
 		0B0000010000000000000080 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D0C0FF1C0000000000000001 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -487,7 +526,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -578,7 +616,6 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;

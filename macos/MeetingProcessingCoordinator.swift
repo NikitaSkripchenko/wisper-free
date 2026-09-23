@@ -11,6 +11,15 @@ protocol MeetingTranscribing: Sendable {
 
 extension OpenAITranscriptionService: MeetingTranscribing {}
 
+/// The chunk-upload progress shown on the Transcribing stage ("Part 3 of 9 sent.").
+/// Nil means either non-chunked transcription or no meeting is actively transcribing.
+struct TranscriptionChunkProgress: Equatable, Sendable {
+    let current: Int
+    let total: Int
+
+    var statusText: String { "Part \(current) of \(total) sent." }
+}
+
 actor MeetingLease {
     private var owner: UUID?
 
@@ -92,6 +101,7 @@ actor MeetingProcessingPipeline {
         apiKey: String,
         chunkSeconds: Int?,
         beginWithTranscription: Bool,
+        onChunkProgress: @escaping @MainActor @Sendable (TranscriptionChunkProgress?) -> Void,
         onUpdate: @escaping RecordUpdate
     ) async {
         if beginWithTranscription {
@@ -99,6 +109,7 @@ actor MeetingProcessingPipeline {
                 meetingID: meetingID,
                 apiKey: apiKey,
                 chunkSeconds: chunkSeconds,
+                onChunkProgress: onChunkProgress,
                 onUpdate: onUpdate
             )
             guard transcriptionSucceeded else { return }
@@ -110,6 +121,7 @@ actor MeetingProcessingPipeline {
         meetingID: UUID,
         apiKey: String,
         chunkSeconds: Int?,
+        onChunkProgress: @escaping @MainActor @Sendable (TranscriptionChunkProgress?) -> Void,
         onUpdate: @escaping RecordUpdate
     ) async -> Bool {
         let attemptID = UUID()
@@ -132,8 +144,13 @@ actor MeetingProcessingPipeline {
                 audioURL: audioURL,
                 apiKey: apiKey,
                 chunkSeconds: chunkSeconds,
-                progress: nil
+                progress: { progress in
+                    if case .chunkComplete(let current, let total) = progress {
+                        onChunkProgress(TranscriptionChunkProgress(current: current, total: total))
+                    }
+                }
             )
+            await onChunkProgress(nil)
             try Task.checkCancellation()
             guard result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                 throw MeetingFailure(category: .emptyTranscript, message: "No speech was recognized. Retry transcription.")
@@ -155,6 +172,7 @@ actor MeetingProcessingPipeline {
             logTransition(stage: "transcription", status: "completed", record: latest)
             return true
         } catch {
+            await onChunkProgress(nil)
             await persistFailure(error, meetingID: meetingID, stage: .transcription, attemptID: attemptID, onUpdate: onUpdate)
             return false
         }
@@ -342,6 +360,8 @@ final class MeetingOperationCoordinator: ObservableObject {
     @Published private(set) var isCapturing = false
     @Published private(set) var isProcessing = false
     @Published private(set) var recoveryMessage: String?
+    /// Chunk-upload progress for the actively transcribing meeting, if any.
+    @Published private(set) var chunkProgress: TranscriptionChunkProgress?
 
     private let recorder: any MeetingRecording
     private let store: any MeetingHistoryStoring
@@ -676,7 +696,10 @@ final class MeetingOperationCoordinator: ObservableObject {
                 meetingID: meetingID,
                 apiKey: apiKey,
                 chunkSeconds: chunkSeconds,
-                beginWithTranscription: beginWithTranscription
+                beginWithTranscription: beginWithTranscription,
+                onChunkProgress: { [weak self] progress in
+                    self?.chunkProgress = progress
+                }
             ) { [weak self] record in
                 self?.upsert(record)
             }
@@ -690,6 +713,7 @@ final class MeetingOperationCoordinator: ObservableObject {
         activeMeetingID = nil
         activeCaptureMode = nil
         activeStagingURL = nil
+        chunkProgress = nil
         await lease.release(for: meetingID)
     }
 

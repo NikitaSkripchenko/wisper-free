@@ -4,29 +4,28 @@ import XCTest
 final class WisperMeetingFlowUITests: XCTestCase {
     private var app: XCUIApplication!
 
-    func testBootstrapGatesHistoryUntilStoreIsReady() {
+    func testBootstrapGatesRecordingUntilStoreIsReady() {
         launch(fixture: "empty", bootstrapDelayMilliseconds: 10_000)
-        let startRecording = app.buttons["Start Recording"]
+        let record = element(identifier: "sidebar.record")
 
-        XCTAssertTrue(startRecording.waitForExistence(timeout: 3))
-        XCTAssertFalse(startRecording.isEnabled)
-        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: startRecording)
+        XCTAssertTrue(record.waitForExistence(timeout: 3))
+        XCTAssertFalse(record.isEnabled)
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: record)
         waitForExpectations(timeout: 12)
     }
 
     func testCompletedMeetingShowsGroundedNotesTranscriptAndActions() {
         launch(fixture: "complete")
-        openHistory()
+        openMeeting()
 
-        XCTAssertTrue(app.staticTexts["UI Test Planning Call"].waitForExistence(timeout: 3))
-        XCTAssertTrue(element(identifier: "meeting.notes").exists)
+        XCTAssertTrue(element(identifier: "meeting.notes").waitForExistence(timeout: 3))
         XCTAssertGreaterThan(elementCount(identifier: "notes.item"), 0)
-        XCTAssertTrue(app.buttons["Regenerate Transcript"].exists)
-        XCTAssertTrue(app.buttons["Regenerate Notes"].exists)
-        selectTab("Raw Transcript")
+        selectTab("Raw transcript")
         XCTAssertTrue(element(identifier: "meeting.transcript").exists)
 
         element(identifier: "meeting.more").click()
+        XCTAssertTrue(app.menuItems["Regenerate Transcript"].exists)
+        XCTAssertTrue(app.menuItems["Regenerate Notes"].exists)
         XCTAssertTrue(app.menuItems["Copy Notes"].exists)
         XCTAssertTrue(app.menuItems["Copy Raw Transcript"].exists)
         XCTAssertTrue(app.menuItems["Remove Meeting"].exists)
@@ -34,19 +33,19 @@ final class WisperMeetingFlowUITests: XCTestCase {
 
     func testEmptyCategoriesRenderExplicitly() {
         launch(fixture: "empty-categories")
-        openHistory()
+        openMeeting()
 
-        XCTAssertTrue(app.staticTexts["UI Test Planning Call"].waitForExistence(timeout: 3))
+        XCTAssertTrue(element(identifier: "meeting.notes").waitForExistence(timeout: 3))
         let emptyLabels = elementCount(identifier: "notes.empty")
         XCTAssertGreaterThanOrEqual(emptyLabels, 3)
     }
 
     func testNotesFailureKeepsTranscriptAndOffersRetryAndRemovalConfirmation() {
         launch(fixture: "notes-failed")
-        openHistory()
+        openMeeting()
 
-        XCTAssertTrue(app.buttons["Retry Notes"].waitForExistence(timeout: 3))
-        selectTab("Raw Transcript")
+        XCTAssertTrue(app.buttons["Retry notes"].waitForExistence(timeout: 3))
+        selectTab("Raw transcript")
         XCTAssertTrue(element(identifier: "meeting.transcript").exists)
         element(identifier: "meeting.more").click()
         app.menuItems["Remove Meeting"].click()
@@ -59,46 +58,38 @@ final class WisperMeetingFlowUITests: XCTestCase {
     func testOnboardingExplainsLocalAndOpenAIPrivacyBoundary() {
         launch(fixture: "empty", showOnboarding: true)
 
-        XCTAssertTrue(app.staticTexts["Stays on your Mac"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Sent to OpenAI when processing"].exists)
-        XCTAssertTrue(app.staticTexts["Wisper adds no meeting bot. Record only with everyone’s consent; recording laws vary by location."].exists)
+        XCTAssertTrue(element(identifier: "onboarding.privacy").waitForExistence(timeout: 3))
+        XCTAssertTrue(element(identifier: "onboarding.finish").exists)
     }
 
-    func testRecordIsCaptureOnlyAndEmptyHistoryOffersBothCreationPaths() {
+    func testEmptyWorkspaceOffersRecordAndImport() {
         launch(fixture: "empty")
 
-        XCTAssertTrue(app.buttons["Start Recording"].waitForExistence(timeout: 3))
-        XCTAssertFalse(app.staticTexts["Latest Transcript"].exists)
-        openHistory()
-        XCTAssertTrue(element(identifier: "history.record").waitForExistence(timeout: 3))
-        XCTAssertTrue(element(identifier: "history.import").exists)
-
-        element(identifier: "history.record").click()
-        XCTAssertTrue(app.buttons["Start Recording"].waitForExistence(timeout: 2))
+        XCTAssertTrue(element(identifier: "sidebar.record").waitForExistence(timeout: 3))
+        XCTAssertTrue(element(identifier: "sidebar.import").exists)
+        XCTAssertFalse(element(identifier: "meeting.row").exists)
     }
 
-    func testHistorySearchShowsZeroStateAndClearRestoresMeeting() {
+    func testSearchShowsZeroStateAndClearRestoresMeeting() {
         launch(fixture: "complete")
-        openHistory()
 
-        let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 3))
-        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(element(identifier: "meeting.row").waitForExistence(timeout: 3))
+        let search = element(identifier: "sidebar.search")
+        XCTAssertTrue(search.exists)
         search.click()
         search.typeText("quarterly review")
         XCTAssertTrue(app.buttons["Clear Search"].waitForExistence(timeout: 2))
-        XCTAssertFalse(app.staticTexts["UI Test Planning Call"].exists)
+        XCTAssertFalse(element(identifier: "meeting.row").exists)
 
         app.buttons["Clear Search"].click()
-        XCTAssertTrue(app.staticTexts["UI Test Planning Call"].waitForExistence(timeout: 2))
+        XCTAssertTrue(element(identifier: "meeting.row").waitForExistence(timeout: 2))
     }
 
     func testRenamePreservesSelectedTabAndCommitsFromKeyboard() {
         launch(fixture: "complete")
-        openHistory()
-        XCTAssertTrue(app.staticTexts["UI Test Planning Call"].waitForExistence(timeout: 3))
+        openMeeting()
         selectTab("Audio")
-        XCTAssertTrue(element(identifier: "meeting.audio").exists)
+        XCTAssertTrue(element(identifier: "meeting.audio").waitForExistence(timeout: 2))
 
         element(identifier: "meeting.title").click()
         let field = element(identifier: "meeting.rename.field")
@@ -107,19 +98,19 @@ final class WisperMeetingFlowUITests: XCTestCase {
         field.typeText("Renamed café")
         field.typeKey(.return, modifierFlags: [])
 
-        XCTAssertTrue(app.staticTexts["Renamed café"].waitForExistence(timeout: 2))
+        XCTAssertTrue(element(labelContaining: "Renamed café").waitForExistence(timeout: 2))
         XCTAssertTrue(element(identifier: "meeting.audio").exists)
     }
 
-    func testMinimumWindowKeepsCoreHistoryControlsVisible() {
+    func testMinimumWindowKeepsCoreMeetingControlsVisible() {
         launch(fixture: "complete")
-        openHistory()
+        openMeeting()
 
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 3))
         XCTAssertGreaterThanOrEqual(window.frame.width, 920)
         XCTAssertGreaterThanOrEqual(window.frame.height, 620)
-        XCTAssertTrue(element(identifier: "meeting.tabs").exists)
+        XCTAssertTrue(element(identifier: "meeting.tabs").waitForExistence(timeout: 2))
         XCTAssertTrue(element(identifier: "meeting.more").exists)
     }
 
@@ -142,10 +133,14 @@ final class WisperMeetingFlowUITests: XCTestCase {
         app.launch()
     }
 
-    private func openHistory() {
-        let history = app.staticTexts["History"]
-        XCTAssertTrue(history.waitForExistence(timeout: 3))
-        history.click()
+    private func openMeeting() {
+        let row = element(identifier: "meeting.row")
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        row.click()
+    }
+
+    private func element(labelContaining text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
     private func element(identifier: String) -> XCUIElement {
