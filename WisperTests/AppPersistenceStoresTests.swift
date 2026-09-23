@@ -27,6 +27,27 @@ final class AppPersistenceStoresTests: XCTestCase {
         XCTAssertEqual(settings.shortcut, .default)
         XCTAssertTrue(settings.chunkingEnabled)
         XCTAssertFalse(settings.onboardingCompleted)
+        XCTAssertTrue(settings.showOverlayWhileRecording)
+    }
+
+    func testSettingsStoreDefaultsShowOverlayToTrueWhenAbsentFromOlderJSON() throws {
+        // Simulates settings.json written before showOverlayWhileRecording existed:
+        // upgrading users must keep seeing the overlay, not silently lose it.
+        let settingsURL = temporaryDirectory.appending(path: "settings.json")
+        let legacyJSON = """
+        {
+            "shortcut": {"keyCode": 49, "carbonModifiers": 768, "displayText": "Command Shift Space"},
+            "chunkingEnabled": true,
+            "chunkSeconds": 480,
+            "onboardingCompleted": true
+        }
+        """
+        try Data(legacyJSON.utf8).write(to: settingsURL, options: .atomic)
+        let store = JSONAppSettingsStore(settingsURL: settingsURL)
+
+        let settings = try store.load()
+
+        XCTAssertTrue(settings.showOverlayWhileRecording)
     }
 
     func testSettingsStoreMigratesLegacyShortcutFile() throws {
@@ -52,8 +73,8 @@ final class AppPersistenceStoresTests: XCTestCase {
             chunkSeconds: 120,
             audioSourceID: "external-mic",
             captureMode: .systemAudio,
-            showInMenuBarOnly: true,
-            onboardingCompleted: true
+            onboardingCompleted: true,
+            showOverlayWhileRecording: false
         )
 
         try store.save(expected)
@@ -64,8 +85,8 @@ final class AppPersistenceStoresTests: XCTestCase {
         XCTAssertEqual(loaded.chunkSeconds, expected.chunkSeconds)
         XCTAssertEqual(loaded.audioSourceID, expected.audioSourceID)
         XCTAssertEqual(loaded.captureMode, expected.captureMode)
-        XCTAssertEqual(loaded.showInMenuBarOnly, expected.showInMenuBarOnly)
         XCTAssertEqual(loaded.onboardingCompleted, expected.onboardingCompleted)
+        XCTAssertEqual(loaded.showOverlayWhileRecording, expected.showOverlayWhileRecording)
     }
 
     func testHistoryStoreSavesAndLoadsTranscripts() throws {
