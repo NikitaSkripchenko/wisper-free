@@ -1,0 +1,9 @@
+// Debug signing hook. Committed builds sign ad-hoc; to sign with your own
+// team (a stable signature keeps Keychain and privacy permissions across
+// rebuilds), create the git-ignored Config/Signing.local.xcconfig:
+//
+//   DEVELOPMENT_TEAM = <your team ID>
+//   CODE_SIGN_IDENTITY = Apple Development
+//
+// CI builds with CODE_SIGNING_ALLOWED=NO and never reads it.
+#include? "Signing.local.xcconfig"
